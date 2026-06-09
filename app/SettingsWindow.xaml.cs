@@ -38,7 +38,6 @@ namespace NextAITranslator
             AutoTranslateBox.IsChecked = App.Config.AutoTranslate;
             SelectScale(App.Config.UiScale);
             SelectFontSize(App.Config.ContentFontSize);
-            SelectTone(App.Config.Tone);
             PromptBox.Text = App.Config.PromptTemplate;
 
             SelectProvider(App.Config.Provider);
@@ -85,15 +84,6 @@ namespace NextAITranslator
                 }
             }
             FontSizeBox.SelectedIndex = -1; // a custom (wheel-set) value not in the list
-        }
-
-        private void SelectTone(string tone)
-        {
-            foreach (ComboBoxItem item in ToneBox.Items)
-            {
-                if ((string)item.Tag == tone) { ToneBox.SelectedItem = item; return; }
-            }
-            ToneBox.SelectedIndex = 0;
         }
 
         private void ResetPrompt_Click(object sender, RoutedEventArgs e)
@@ -235,9 +225,6 @@ namespace NextAITranslator
             App.Config.Provider = _currentKey;
             App.Config.Hotkey = hotkey;
             App.Config.AutoTranslate = AutoTranslateBox.IsChecked == true;
-
-            if (ToneBox.SelectedValue is string tone)
-                App.Config.Tone = tone;
 
             var prompt = PromptBox.Text.Trim();
             App.Config.PromptTemplate = prompt.Length > 0 ? prompt : AppConfig.DefaultPromptTemplate;

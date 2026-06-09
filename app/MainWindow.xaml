@@ -26,7 +26,7 @@
                      AcceptsReturn="True" TextWrapping="Wrap"
                      VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top" />
 
-            <!-- 控制列：語言 + 清除 + 設定 -->
+            <!-- 控制列：語言 + 語調 + 清除 -->
             <Grid Grid.Row="1" Margin="0,10,0,10">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -50,11 +50,21 @@
                     </ComboBox>
                 </StackPanel>
 
-                <Button x:Name="ClearButton" Grid.Column="2" Content="清除"
-                        Style="{StaticResource SecondaryButton}" Margin="0,0,8,0"
-                        Click="ClearButton_Click" />
-                <Button x:Name="SettingsButton" Grid.Column="3" Content="設定"
-                        Style="{StaticResource SecondaryButton}" Click="SettingsButton_Click" />
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
+                    <TextBlock Text="語調" VerticalAlignment="Center" Margin="0,0,8,0"
+                               Foreground="{StaticResource SubtleBrush}" />
+                    <ComboBox x:Name="ToneBox" Width="128" SelectedValuePath="Tag"
+                              SelectionChanged="ToneBox_SelectionChanged">
+                        <ComboBoxItem Content="默認（自然）" Tag="default" />
+                        <ComboBoxItem Content="專業" Tag="professional" />
+                        <ComboBoxItem Content="友善" Tag="friendly" />
+                        <ComboBoxItem Content="正式" Tag="formal" />
+                        <ComboBoxItem Content="口語" Tag="casual" />
+                    </ComboBox>
+                </StackPanel>
+
+                <Button x:Name="ClearButton" Grid.Column="3" Content="清除"
+                        Style="{StaticResource SecondaryButton}" Click="ClearButton_Click" />
             </Grid>
 
             <!-- 輸出 -->
@@ -62,15 +72,29 @@
                      IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
                      VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top" />
 
-            <!-- 底部：複製 + 翻譯 -->
-            <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
-                <Button x:Name="CopyButton" Content="複製"
-                        Style="{StaticResource SecondaryButton}" Margin="0,0,8,0"
-                        Click="CopyButton_Click" />
-                <Button x:Name="TranslateButton" Content="翻譯"
-                        Style="{StaticResource PrimaryButton}" Padding="26,7"
-                        Click="TranslateButton_Click" />
-            </StackPanel>
+            <!-- 底部：左 = 設定 + 目前模型；右 = 複製 + 翻譯 -->
+            <Grid Grid.Row="3" Margin="0,12,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <Button x:Name="SettingsButton" Grid.Column="0" Content="設定"
+                        Style="{StaticResource SecondaryButton}" Click="SettingsButton_Click" />
+                <TextBlock x:Name="ModelLabel" Grid.Column="1" VerticalAlignment="Center"
+                           Margin="12,0,8,0" TextTrimming="CharacterEllipsis"
+                           Foreground="{StaticResource SubtleBrush}" />
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal">
+                    <Button x:Name="CopyButton" Content="複製"
+                            Style="{StaticResource SecondaryButton}" Margin="0,0,8,0"
+                            Click="CopyButton_Click" />
+                    <Button x:Name="TranslateButton" Content="翻譯"
+                            Style="{StaticResource PrimaryButton}" Padding="26,7"
+                            Click="TranslateButton_Click" />
+                </StackPanel>
+            </Grid>
         </Grid>
     </Grid>
 </Window>

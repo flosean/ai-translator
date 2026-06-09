@@ -13,18 +13,47 @@ namespace NextAITranslator
     public partial class MainWindow : Window
     {
         private bool _reallyExit = false;
+        private bool _loaded;
         private CancellationTokenSource? _cts;
 
         public MainWindow()
         {
             InitializeComponent();
             SelectLang(App.Config.LastTargetLang);
+            SelectTone(App.Config.Tone);
+            UpdateModelLabel();
             DarkTitleBar.Apply(this);
             ApplyScale();
             ApplyContentFont();
             PreviewKeyDown += OnPreviewKeyDown;
             InputBox.PreviewMouseWheel += OnContentWheel;
             OutputBox.PreviewMouseWheel += OnContentWheel;
+            _loaded = true;
+        }
+
+        private void SelectTone(string tone)
+        {
+            foreach (ComboBoxItem item in ToneBox.Items)
+            {
+                if ((string)item.Tag == tone) { ToneBox.SelectedItem = item; return; }
+            }
+            ToneBox.SelectedIndex = 0;
+        }
+
+        private void ToneBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (!_loaded) return;
+            if (ToneBox.SelectedValue is string tone)
+            {
+                App.Config.Tone = tone;
+                App.Config.Save();
+            }
+        }
+
+        public void UpdateModelLabel()
+        {
+            var m = App.Config.CurrentProvider().Model;
+            ModelLabel.Text = string.IsNullOrWhiteSpace(m) ? "（未設定模型）" : "模型：" + m;
         }
 
         // ----- translation content font size (independent of overall UI scale) -----
@@ -178,9 +207,10 @@ namespace NextAITranslator
         {
             var win = new SettingsWindow { Owner = this };
             win.ShowDialog();
-            // Scale / content font may have changed in settings.
+            // Scale / content font / model may have changed in settings.
             ApplyScale();
             ApplyContentFont();
+            UpdateModelLabel();
         }
 
         private async void TranslateButton_Click(object sender, RoutedEventArgs e)
