@@ -228,6 +228,11 @@ export function TranslatorWindow() {
             .onFocusChanged(({ payload: focused }: Event<boolean>) => {
                 if (!focused) {
                     commands.rememberActiveWindowCommand().catch(console.error)
+                    try {
+                        ;(document.activeElement as HTMLElement)?.blur()
+                    } catch (e) {
+                        console.error(e)
+                    }
                 }
                 if (!pinned && settings.autoHideWindowWhenOutOfFocus) {
                     if (timer) {

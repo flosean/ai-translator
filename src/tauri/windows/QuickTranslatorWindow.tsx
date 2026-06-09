@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { listen, type Event, type UnlistenFn } from '@tauri-apps/api/event'
 import { Client as Styletron } from 'styletron-engine-atomic'
 import { Provider as StyletronProvider } from 'styletron-react'
 import { BaseProvider } from 'baseui-sd'
@@ -42,6 +42,26 @@ export function QuickTranslatorWindow() {
         ;(async () => {
             unlisten = await listen('quick-translator-shown', () => {
                 setTick((n) => n + 1)
+            })
+        })()
+        return () => {
+            unlisten?.()
+        }
+    }, [])
+
+    useEffect(() => {
+        let unlisten: UnlistenFn | undefined
+        ;(async () => {
+            const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow')
+            const appWindow = WebviewWindow.getCurrent()
+            unlisten = await appWindow.onFocusChanged(({ payload: focused }: Event<boolean>) => {
+                if (!focused) {
+                    try {
+                        ;(document.activeElement as HTMLElement)?.blur()
+                    } catch (e) {
+                        console.error(e)
+                    }
+                }
             })
         })()
         return () => {
