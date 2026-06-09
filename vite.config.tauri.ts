@@ -29,7 +29,7 @@ export default defineConfig({
         // produce sourcemaps for debug builds
         sourcemap: !!process.env.TAURI_DEBUG,
         rollupOptions: {
-            input: ['src/tauri/dummy.html', 'src/tauri/index.html'],
+            input: ['src/tauri/index.html'],
             output: {
                 dir: 'dist/tauri',
             },

@@ -27,33 +27,11 @@ pub const QUICK_TRANSLATOR_WIN_NAME: &str = "quick_translator";
 pub const WRITING_INDICATOR_WIN_NAME: &str = "writing_indicator";
 pub const SCREENSHOT_WIN_NAME: &str = "screenshot";
 
-fn get_dummy_window() -> tauri::WebviewWindow {
-    let app_handle = APP_HANDLE.get().unwrap();
-    match app_handle.get_webview_window("dummy") {
-        Some(window) => {
-            debug_println!("Dummy window found!");
-            window
-        }
-        None => {
-            debug_println!("Create dummy window!");
-            tauri::WebviewWindowBuilder::new(
-                app_handle,
-                "dummy",
-                tauri::WebviewUrl::App("src/tauri/dummy.html".into()),
-            )
-            .title("Dummy")
-            .visible(false)
-            .build()
-            .unwrap()
-        }
-    }
-}
-
 pub fn get_current_monitor() -> tauri::Monitor {
-    let window = get_dummy_window();
+    let app_handle = APP_HANDLE.get().unwrap();
     let (mouse_logical_x, mouse_logical_y): (i32, i32) = get_mouse_location().unwrap();
     let mouse_physical_position = PhysicalPosition::new(mouse_logical_x, mouse_logical_y);
-    window
+    app_handle
         .available_monitors()
         .map(|monitors| {
             monitors
@@ -74,8 +52,7 @@ pub fn get_current_monitor() -> tauri::Monitor {
             eprintln!("Error get available monitors: {}", e);
             None
         })
-        .or_else(|| window.current_monitor().unwrap())
-        .or_else(|| window.primary_monitor().unwrap())
+        .or_else(|| app_handle.primary_monitor().unwrap())
         .expect("No current monitor found")
 }
 
