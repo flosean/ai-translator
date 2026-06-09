@@ -1,7 +1,5 @@
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use crate::insertion::remember_active_window;
 use debug_print::debug_println;
-#[cfg(target_os = "windows")]
 use std::path::Path;
 use tauri::path::BaseDirectory;
 use tauri::Manager;
@@ -113,19 +111,12 @@ pub fn screenshot(x: i32, y: i32) {
     }
 }
 
-#[cfg(target_os = "linux")]
-pub fn do_ocr() -> Result<(), Box<dyn std::error::Error>> {
-    Ok(())
-}
-
-#[cfg(target_os = "windows")]
 pub fn do_ocr() -> Result<(), Box<dyn std::error::Error>> {
     use crate::windows::show_screenshot_window;
     show_screenshot_window();
     Ok(())
 }
 
-#[cfg(target_os = "windows")]
 pub fn do_ocr_with_cut_file_path(image_file_path: &Path) {
     use windows::core::HSTRING;
     use windows::Graphics::Imaging::BitmapDecoder;
@@ -178,59 +169,6 @@ pub fn do_ocr_with_cut_file_path(image_file_path: &Path) {
     }
 }
 
-#[cfg(target_os = "macos")]
-pub fn do_ocr() -> Result<(), Box<dyn std::error::Error>> {
-    use crate::{APP_HANDLE, CPU_VENDOR};
-
-    let mut rel_path = "resources/bin/ocr_intel".to_string();
-    if *CPU_VENDOR.lock() == "Apple" {
-        rel_path = "resources/bin/ocr_apple".to_string();
-    }
-
-    let app = APP_HANDLE.get().ok_or("APP_HANDLE not initialized")?;
-
-    let bin_path = app
-        .path()
-        .resolve(&rel_path, BaseDirectory::Resource)
-        .map_err(|e| {
-            format!(
-                "Failed to resolve ocr binary resource '{}': {:?}",
-                rel_path, e
-            )
-        })?;
-
-    if !bin_path.exists() {
-        return Err(format!(
-            "OCR binary not found at {:?}. Please ensure the binary is bundled correctly.",
-            bin_path
-        )
-        .into());
-    }
-
-    let output = std::process::Command::new(&bin_path)
-        .args(["-l", "zh"])
-        .output()
-        .map_err(|e| format!("Failed to execute ocr binary at {:?}: {:?}", bin_path, e))?;
-
-    // check exit code
-    if output.status.success() {
-        // get output content
-        let content = String::from_utf8_lossy(&output.stdout);
-        crate::utils::send_text(content.to_string());
-        remember_active_window();
-        crate::windows::show_translator_window(false, true, true);
-        Ok(())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(format!(
-            "OCR binary failed with exit code {:?}: {}",
-            output.status.code(),
-            stderr
-        )
-        .into())
-    }
-}
-
 #[tauri::command(async)]
 #[specta::specta]
 pub fn start_ocr() {
@@ -249,7 +187,6 @@ pub fn finish_ocr() {
     do_finish_ocr();
 }
 
-#[cfg(target_os = "windows")]
 fn do_finish_ocr() {
     let app_handle = match crate::APP_HANDLE.get() {
         Some(handle) => handle,
@@ -271,9 +208,3 @@ fn do_finish_ocr() {
     let image_file_path = image_dir.join("cut.png");
     do_ocr_with_cut_file_path(&image_file_path);
 }
-
-#[cfg(target_os = "linux")]
-fn do_finish_ocr() {}
-
-#[cfg(target_os = "macos")]
-fn do_finish_ocr() {}

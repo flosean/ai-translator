@@ -32,13 +32,7 @@ export class Kimi extends AbstractEngine {
 
     async getHeaders() {
         const settings = await getSettings()
-        let accessToken = settings.kimiAccessToken
-
-        if (!isDesktopApp()) {
-            const browser = (await import('webextension-polyfill')).default
-            const config = await browser.storage.local.get([keyKimiAccessToken])
-            accessToken = config[keyKimiAccessToken]
-        }
+        const accessToken = settings.kimiAccessToken
 
         // generate traffic id like clg4susodhsh25d6vdhv
         const trafficID = Array.from({ length: 20 }, () => Math.floor(Math.random() * 36).toString(36)).join('')

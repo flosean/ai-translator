@@ -6,11 +6,8 @@ import {
     historyInternalService,
 } from '../internal-services/history'
 import { HistoryItem } from '../internal-services/db'
-import { isDesktopApp, isUserscript } from '../utils'
-import { backgroundHistoryService } from '../background/services/history'
 
-const historyServiceImpl: IHistoryInternalService =
-    isDesktopApp() || isUserscript() ? historyInternalService : backgroundHistoryService
+const historyServiceImpl: IHistoryInternalService = historyInternalService
 
 export const historyService = {
     create(item: CreateHistoryItem): Promise<HistoryItem> {

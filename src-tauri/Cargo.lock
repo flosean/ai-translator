@@ -112,24 +112,16 @@ checksum = "a23eb6b1614318a8071c9b2521f36b424b2c83db5eb3a0fead4a6c0809af6e61"
 name = "app"
 version = "0.1.0"
 dependencies = [
- "accessibility-ng",
- "accessibility-sys-ng",
  "active-win-pos-rs",
  "arboard",
  "clipboard",
- "cocoa 0.24.1",
- "core-foundation 0.9.4",
- "core-graphics 0.22.3",
- "cpuid",
  "debug_print",
  "enigo",
  "futures-util",
  "get-selected-text",
  "image 0.24.9",
- "macos-accessibility-client",
  "mouce",
  "mouse_position",
- "objc",
  "once_cell",
  "parking_lot",
  "rdev",
@@ -140,7 +132,6 @@ dependencies = [
  "similar",
  "specta",
  "specta-typescript",
- "sysinfo",
  "tauri",
  "tauri-build",
  "tauri-plugin-aptabase",
@@ -161,7 +152,6 @@ dependencies = [
  "tokio",
  "whatlang",
  "windows 0.61.3",
- "xcb 1.6.0",
 ]
 
 [[package]]
@@ -983,15 +973,6 @@ name = "cpufeatures"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "59ed5838eebb26a2bb2e58f6d5b5316989ae9d08bab10e0e6d103e656d1b0280"
-dependencies = [
- "libc",
-]
-
-[[package]]
-name = "cpuid"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0c4b055219ace68cabfbb8071c4aad068565d11b67e092e151b17b9fd3bdba9"
 dependencies = [
  "libc",
 ]
@@ -3229,15 +3210,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ntapi"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8a3895c6391c39d7fe7ebc444a87eb2991b2a0bc718fdabd071eec617fc68e4"
-dependencies = [
- "winapi 0.3.9",
-]
-
-[[package]]
 name = "num-conv"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5319,21 +5291,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8eab9a99a024a169fe8a903cf9d4a3b3601109bcc13bd9e3c6fff259138626c4"
 dependencies = [
  "libc",
-]
-
-[[package]]
-name = "sysinfo"
-version = "0.28.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b4c2f3ca6693feb29a89724516f016488e9aafc7f37264f898593ee4b942f31b"
-dependencies = [
- "cfg-if",
- "core-foundation-sys 0.8.7",
- "libc",
- "ntapi",
- "once_cell",
- "rayon",
- "winapi 0.3.9",
 ]
 
 [[package]]

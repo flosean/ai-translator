@@ -1,6 +1,6 @@
 /* eslint-disable camelcase */
 import { getUniversalFetch } from '@/common/universal-fetch'
-import { fetchSSE, getSettings, isDesktopApp, setSettings } from '@/common/utils'
+import { fetchSSE, getSettings, setSettings } from '@/common/utils'
 import { AbstractEngine } from '@/common/engines/abstract-engine'
 import { IModel, IMessageRequest } from '@/common/engines/interfaces'
 import qs from 'qs'
@@ -20,13 +20,7 @@ export class ChatGLM extends AbstractEngine {
 
     async getHeaders() {
         const settings = await getSettings()
-        let accessToken = settings.chatglmAccessToken
-
-        if (!isDesktopApp()) {
-            const browser = (await import('webextension-polyfill')).default
-            const config = await browser.storage.local.get([keyChatGLMAccessToken])
-            accessToken = config[keyChatGLMAccessToken]
-        }
+        const accessToken = settings.chatglmAccessToken
 
         return {
             'Content-Type': 'application/json',

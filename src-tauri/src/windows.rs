@@ -5,8 +5,6 @@ use crate::UpdateResult;
 use crate::ALWAYS_ON_TOP;
 use crate::APP_HANDLE;
 use active_win_pos_rs::get_active_window;
-#[cfg(target_os = "macos")]
-use cocoa::appkit::NSWindow;
 use debug_print::debug_println;
 use enigo::*;
 use get_selected_text::get_selected_text;
@@ -17,7 +15,6 @@ use std::time::Duration;
 use tauri::{Emitter, Listener, LogicalPosition, Manager, PhysicalPosition};
 use tauri_plugin_updater::UpdaterExt;
 use tauri_specta::Event;
-use tokio::time::sleep;
 
 pub const TRANSLATOR_WIN_NAME: &str = "translator";
 pub const SETTINGS_WIN_NAME: &str = "settings";
@@ -28,7 +25,6 @@ pub const HISTORY_WIN_NAME: &str = "history";
 pub const INLINE_LOOKUP_WIN_NAME: &str = "inline_lookup";
 pub const QUICK_TRANSLATOR_WIN_NAME: &str = "quick_translator";
 pub const WRITING_INDICATOR_WIN_NAME: &str = "writing_indicator";
-#[cfg(target_os = "windows")]
 pub const SCREENSHOT_WIN_NAME: &str = "screenshot";
 
 fn get_dummy_window() -> tauri::WebviewWindow {
@@ -56,13 +52,7 @@ fn get_dummy_window() -> tauri::WebviewWindow {
 pub fn get_current_monitor() -> tauri::Monitor {
     let window = get_dummy_window();
     let (mouse_logical_x, mouse_logical_y): (i32, i32) = get_mouse_location().unwrap();
-    let scale_factor = window.scale_factor().unwrap_or(1.0);
-    let mut mouse_physical_position = PhysicalPosition::new(mouse_logical_x, mouse_logical_y);
-    if cfg!(target_os = "macos") {
-        mouse_physical_position =
-            LogicalPosition::new(mouse_logical_x as f64, mouse_logical_y as f64)
-                .to_physical(scale_factor);
-    }
+    let mouse_physical_position = PhysicalPosition::new(mouse_logical_x, mouse_logical_y);
     window
         .available_monitors()
         .map(|monitors| {
@@ -167,15 +157,7 @@ pub fn do_hide_translator_window() {
     if let Some(handle) = APP_HANDLE.get() {
         match handle.get_webview_window(TRANSLATOR_WIN_NAME) {
             Some(window) => {
-                #[cfg(not(target_os = "macos"))]
-                {
-                    window.hide().unwrap();
-                }
-                #[cfg(target_os = "macos")]
-                {
-                    tauri::AppHandle::hide(&handle).unwrap();
-                    window.hide().unwrap();
-                }
+                window.hide().unwrap();
             }
             None => {}
         }
@@ -233,7 +215,6 @@ pub fn get_thumb_window(x: i32, y: i32) -> tauri::WebviewWindow {
         }
         None => {
             debug_println!("Thumb window does not exist");
-            #[cfg_attr(not(target_os = "windows"), allow(unused_mut))]
             let mut builder = tauri::WebviewWindowBuilder::new(
                 handle,
                 THUMB_WIN_NAME,
@@ -252,13 +233,9 @@ pub fn get_thumb_window(x: i32, y: i32) -> tauri::WebviewWindow {
             .closable(false)
             .decorations(false);
 
-            #[cfg(target_os = "windows")]
-            {
-                builder = builder.shadow(false);
-            }
+            builder = builder.shadow(false);
 
             let window = builder.build().unwrap();
-            #[cfg(target_os = "windows")]
             {
                 // use SetWindowLongPtrW in tao page to disable minimize, maximize and close buttons
                 use windows::Win32::UI::WindowsAndMessaging::{
@@ -287,21 +264,12 @@ pub fn get_thumb_window(x: i32, y: i32) -> tauri::WebviewWindow {
         }
     };
 
-    if cfg!(target_os = "macos") {
-        window
-            .set_position(LogicalPosition::new(
-                x as f64 + position_offset,
-                y as f64 + position_offset,
-            ))
-            .unwrap();
-    } else {
-        window
-            .set_position(PhysicalPosition::new(
-                x as f64 + position_offset,
-                y as f64 + position_offset,
-            ))
-            .unwrap();
-    }
+    window
+        .set_position(PhysicalPosition::new(
+            x as f64 + position_offset,
+            y as f64 + position_offset,
+        ))
+        .unwrap();
 
     window
 }
@@ -310,52 +278,16 @@ pub fn post_process_window<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) 
     window.set_visible_on_all_workspaces(true).unwrap();
 
     let _ = window.current_monitor();
-
-    #[cfg(target_os = "macos")]
-    {
-        use cocoa::appkit::NSWindowCollectionBehavior;
-        use cocoa::base::id;
-
-        let ns_win = window.ns_window().unwrap() as id;
-
-        unsafe {
-            // Disable the automatic creation of "Show Tab Bar" etc menu items on macOS
-            NSWindow::setAllowsAutomaticWindowTabbing_(ns_win, cocoa::base::NO);
-
-            let mut collection_behavior = ns_win.collectionBehavior();
-            collection_behavior |=
-                NSWindowCollectionBehavior::NSWindowCollectionBehaviorCanJoinAllSpaces;
-
-            ns_win.setCollectionBehavior_(collection_behavior);
-        }
-    }
 }
 
 pub fn build_window<'a, R: tauri::Runtime, M: tauri::Manager<R>>(
     builder: tauri::WebviewWindowBuilder<'a, R, M>,
 ) -> tauri::WebviewWindow<R> {
-    #[cfg(target_os = "macos")]
-    {
-        let window = builder
-            .title_bar_style(tauri::TitleBarStyle::Overlay)
-            .hidden_title(true)
-            .transparent(true)
-            .build()
-            .unwrap();
+    let window = builder.transparent(true).decorations(true).build().unwrap();
 
-        post_process_window(&window);
+    post_process_window(&window);
 
-        window
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    {
-        let window = builder.transparent(true).decorations(true).build().unwrap();
-
-        post_process_window(&window);
-
-        window
-    }
+    window
 }
 
 #[tauri::command]
@@ -384,13 +316,7 @@ fn position_translator_window_to_cursor(window: &tauri::WebviewWindow) {
     }
     let (mouse_logical_x, mouse_logical_y) = mouse_position.unwrap();
     let window_physical_size = window_physical_size.unwrap();
-    let scale_factor = window.scale_factor().unwrap_or(1.0);
-    let mut mouse_physical_position = PhysicalPosition::new(mouse_logical_x, mouse_logical_y);
-    if cfg!(target_os = "macos") {
-        mouse_physical_position =
-            LogicalPosition::new(mouse_logical_x as f64, mouse_logical_y as f64)
-                .to_physical(scale_factor);
-    }
+    let mouse_physical_position = PhysicalPosition::new(mouse_logical_x, mouse_logical_y);
 
     let monitor_physical_size = current_monitor.size();
     let monitor_physical_position = current_monitor.position();
@@ -493,20 +419,12 @@ pub fn get_translator_window(
 
     if restore_previous_position {
         debug_println!("Restoring previous position");
-        if !cfg!(target_os = "macos") {
-            window.unminimize().unwrap();
-        }
+        window.unminimize().unwrap();
     } else if to_mouse_position {
         debug_println!("Setting position to mouse position");
         let (mouse_logical_x, mouse_logical_y): (i32, i32) = get_mouse_location().unwrap();
         let window_physical_size = window.outer_size().unwrap();
-        let scale_factor = window.scale_factor().unwrap_or(1.0);
-        let mut mouse_physical_position = PhysicalPosition::new(mouse_logical_x, mouse_logical_y);
-        if cfg!(target_os = "macos") {
-            mouse_physical_position =
-                LogicalPosition::new(mouse_logical_x as f64, mouse_logical_y as f64)
-                    .to_physical(scale_factor);
-        }
+        let mouse_physical_position = PhysicalPosition::new(mouse_logical_x, mouse_logical_y);
 
         let monitor_physical_size = current_monitor.size();
         let monitor_physical_position = current_monitor.position();
@@ -526,9 +444,7 @@ pub fn get_translator_window(
                 + (monitor_physical_size.height as i32)
                 - (window_physical_size.height as i32);
         }
-        if !cfg!(target_os = "macos") {
-            window.unminimize().unwrap();
-        }
+        window.unminimize().unwrap();
         debug_println!("Mouse physical position: {:?}", mouse_physical_position);
         debug_println!("Monitor physical size: {:?}", monitor_physical_size);
         debug_println!("Monitor physical position: {:?}", monitor_physical_position);
@@ -536,9 +452,7 @@ pub fn get_translator_window(
         debug_println!("Window physical position: {:?}", window_physical_position);
         window.set_position(window_physical_position).unwrap();
     } else if center {
-        if !cfg!(target_os = "macos") {
-            window.unminimize().unwrap();
-        }
+        window.unminimize().unwrap();
         window.center().unwrap();
     }
 
@@ -780,12 +694,7 @@ pub fn show_inline_lookup_window(
         let monitor_physical_position = current_monitor.position();
         let window_physical_size = window.outer_size().unwrap_or_default();
 
-        let mut mouse_physical_position = PhysicalPosition::new(mouse_logical_x, mouse_logical_y);
-        if cfg!(target_os = "macos") {
-            mouse_physical_position =
-                LogicalPosition::new(mouse_logical_x as f64, mouse_logical_y as f64)
-                    .to_physical(scale_factor);
-        }
+        let mouse_physical_position = PhysicalPosition::new(mouse_logical_x, mouse_logical_y);
 
         let mut window_physical_position = mouse_physical_position;
 
@@ -882,51 +791,12 @@ pub fn get_screenshot_window() -> tauri::WebviewWindow {
 
     window.set_resizable(false).unwrap();
     window.set_skip_taskbar(true).unwrap();
-    #[cfg(target_os = "macos")]
-    {
-        let size = current_monitor.size();
-        window.set_decorations(false).unwrap();
-        window.set_size(*size).unwrap();
-    }
-
-    #[cfg(not(target_os = "macos"))]
     window.set_fullscreen(true).unwrap();
-
     window.set_always_on_top(true).unwrap();
 
     window
 }
 
-#[cfg(target_os = "macos")]
-fn apply_quick_translator_panel_traits(window: &tauri::WebviewWindow) {
-    // We intentionally do NOT change the NSWindow class to NSPanel here.
-    // Tao installs its own NSWindow subclass with method overrides; replacing
-    // its class with NSPanel at runtime corrupts the responder chain and
-    // crashes the process the next time AppKit dispatches certain selectors.
-    //
-    // The "doesn't steal focus" behaviour we need is already covered by:
-    //   * the WebviewWindowBuilder is built with .focused(false)
-    //   * we never call window.set_focus() for this window
-    //   * the app activation policy is Accessory on macOS
-    // What we still tweak natively here is the window level (so the panel
-    // floats above the previously active app's windows) and behaviour on
-    // app deactivation (don't hide when our app loses focus).
-    use cocoa::base::{id, NO};
-    use objc::{msg_send, sel, sel_impl};
-
-    const NS_FLOATING_WINDOW_LEVEL: i64 = 3;
-
-    let Some(ns_win) = window.ns_window().ok().map(|p| p as id) else {
-        return;
-    };
-
-    unsafe {
-        let _: () = msg_send![ns_win, setLevel: NS_FLOATING_WINDOW_LEVEL];
-        let _: () = msg_send![ns_win, setHidesOnDeactivate: NO];
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
 fn apply_quick_translator_panel_traits(_window: &tauri::WebviewWindow) {}
 
 pub fn get_quick_translator_window() -> tauri::WebviewWindow {
@@ -961,17 +831,6 @@ pub fn get_quick_translator_window() -> tauri::WebviewWindow {
     post_process_window(&window);
     apply_quick_translator_panel_traits(&window);
 
-    #[cfg(target_os = "macos")]
-    {
-        use tauri::utils::config::WindowEffectsConfig;
-        use tauri::utils::{WindowEffect, WindowEffectState};
-        let _ = window.set_effects(WindowEffectsConfig {
-            effects: vec![WindowEffect::HudWindow],
-            state: Some(WindowEffectState::Active),
-            radius: Some(14.0),
-            color: None,
-        });
-    }
     window
 }
 
@@ -1052,38 +911,6 @@ const WRITING_INDICATOR_WIDTH: f64 = 220.0;
 const WRITING_INDICATOR_HEIGHT: f64 = 44.0;
 const WRITING_INDICATOR_ANCHOR_GAP: f64 = 8.0;
 
-#[cfg(target_os = "macos")]
-fn apply_writing_indicator_panel_traits(window: &tauri::WebviewWindow) {
-    // Same rationale as `apply_quick_translator_panel_traits`: don't reclass
-    // NSWindow to NSPanel (tao's subclass breaks). Just bump the level so the
-    // HUD floats above the previously active app, keep it visible when our app
-    // is in the background, and make it click-through so it never accidentally
-    // intercepts the user's clicks.
-    use cocoa::base::{id, NO, YES};
-    use objc::{class, msg_send, sel, sel_impl};
-
-    const NS_FLOATING_WINDOW_LEVEL: i64 = 3;
-
-    let Some(ns_win) = window.ns_window().ok().map(|p| p as id) else {
-        return;
-    };
-
-    unsafe {
-        let _: () = msg_send![ns_win, setLevel: NS_FLOATING_WINDOW_LEVEL];
-        let _: () = msg_send![ns_win, setHidesOnDeactivate: NO];
-        let _: () = msg_send![ns_win, setIgnoresMouseEvents: YES];
-        // Tauri's `.transparent(true)` alone leaves a faint background in the
-        // corners outside the React-rendered rounded card on some macOS
-        // versions. Force the NSWindow itself to draw absolutely nothing so
-        // only our rounded card is visible.
-        let clear_color: id = msg_send![class!(NSColor), clearColor];
-        let _: () = msg_send![ns_win, setBackgroundColor: clear_color];
-        let _: () = msg_send![ns_win, setOpaque: NO];
-        let _: () = msg_send![ns_win, setHasShadow: NO];
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
 fn apply_writing_indicator_panel_traits(_window: &tauri::WebviewWindow) {}
 
 pub fn get_writing_indicator_window() -> tauri::WebviewWindow {
@@ -1114,22 +941,6 @@ pub fn get_writing_indicator_window() -> tauri::WebviewWindow {
     let window = builder.build().unwrap();
     post_process_window(&window);
     apply_writing_indicator_panel_traits(&window);
-
-    // Native macOS HUD vibrancy material. With the NSWindow background set to
-    // clearColor (above) the effect material is what the user actually sees
-    // outside the React content — giving a true frosted-glass appearance that
-    // looks at home on macOS instead of a flat CSS rgba background.
-    #[cfg(target_os = "macos")]
-    {
-        use tauri::utils::config::WindowEffectsConfig;
-        use tauri::utils::{WindowEffect, WindowEffectState};
-        let _ = window.set_effects(WindowEffectsConfig {
-            effects: vec![WindowEffect::HudWindow],
-            state: Some(WindowEffectState::Active),
-            radius: Some(14.0),
-            color: None,
-        });
-    }
 
     window
 }

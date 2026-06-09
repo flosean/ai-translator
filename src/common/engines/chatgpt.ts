@@ -14,7 +14,7 @@ export const keyChatgptArkoseReqUrl = 'chatgptArkoseReqUrl'
 export const keyChatgptArkoseReqForm = 'chatgptArkoseReqForm'
 
 export async function getArkoseToken() {
-    const browser = (await import('webextension-polyfill')).default
+    const browser = await utils.getBrowser()
     const config = await browser.storage.local.get([keyChatgptArkoseReqUrl, keyChatgptArkoseReqForm])
     if (!config[keyChatgptArkoseReqUrl] || !config[keyChatgptArkoseReqForm]) {
         throw new Error(

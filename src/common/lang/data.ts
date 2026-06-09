@@ -57,12 +57,6 @@ export const LANG_CONFIGS: Record<LangCode, Config> = {
 
     // CJK
     // Chinese
-    'zh-Hans': {
-        nameEn: 'Simplified Chinese',
-        name: '简体中文',
-        isVariant: true,
-        phoneticNotation: 'Pinyin',
-    },
     'zh-Hant': {
         nameEn: 'Traditional Chinese',
         name: '繁體中文',

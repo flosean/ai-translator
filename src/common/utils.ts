@@ -19,7 +19,7 @@ export const defaultGeminiAPIURL = 'https://generativelanguage.googleapis.com'
 export const defaultChatGPTModel = 'text-davinci-002-render-sha'
 
 export const defaultAutoTranslate = false
-export const defaultTargetLanguage = 'zh-Hans'
+export const defaultTargetLanguage = 'zh-Hant'
 export const defaultWritingTargetLanguage = 'en'
 export const defaultSelectInputElementsText = true
 export const defaultReadSelectedWordsFromInputElementsText = false
@@ -271,50 +271,31 @@ export async function setSettings(settings: Partial<ISettings>) {
 }
 
 export async function getBrowser(): Promise<IBrowser> {
-    if (isElectron()) {
-        return (await import('./polyfills/electron')).electronBrowser
-    }
-    if (isTauri()) {
-        return (await import('./polyfills/tauri')).tauriBrowser
-    }
-    if (isUserscript()) {
-        return (await import('./polyfills/userscript')).userscriptBrowser
-    }
-    return (await import('webextension-polyfill')).default
+    return (await import('./polyfills/tauri')).tauriBrowser
 }
 
 export const isElectron = () => {
-    return navigator.userAgent.indexOf('Electron') >= 0
+    return false
 }
 
 export const isTauri = () => {
-    if (typeof window === 'undefined') {
-        return false
-    }
-    return window['__TAURI__' as any] !== undefined
+    return true
 }
 
 export const isBrowserExtensionOptions = () => {
-    if (typeof window === 'undefined') {
-        return false
-    }
-    return window['__IS_OT_BROWSER_EXTENSION_OPTIONS__' as any] !== undefined
+    return false
 }
 
 export const isBrowserExtensionContentScript = () => {
-    if (typeof window === 'undefined') {
-        return false
-    }
-    return window['__IS_OT_BROWSER_EXTENSION_CONTENT_SCRIPT__' as any] !== undefined
+    return false
 }
 
 export const isDesktopApp = () => {
-    return isElectron() || isTauri()
+    return true
 }
 
 export const isUserscript = () => {
-    // eslint-disable-next-line camelcase
-    return typeof GM_info !== 'undefined'
+    return false
 }
 
 export const isDarkMode = async () => {

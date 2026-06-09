@@ -12,6 +12,7 @@ interface ISync {
 
 interface IStorage {
     sync: ISync
+    local: ISync
 }
 
 interface IRuntimeOnMessage {

@@ -7,7 +7,6 @@ export const defaultTTSProvider = 'EdgeTTS'
 
 export const langCode2TTSLang: Partial<Record<LangCode, string>> = {
     'en': 'en-US',
-    'zh-Hans': 'zh-CN',
     'zh-Hant': 'zh-TW',
     'yue': 'zh-HK',
     'lzh': 'zh-CN',
@@ -38,7 +37,6 @@ export const langCode2TTSLang: Partial<Record<LangCode, string>> = {
 
 export const ttsLangTestTextMap: Partial<Record<keyof typeof langCode2TTSLang, string>> = {
     'en': 'Hello, welcome to NextAI Translator',
-    'zh-Hans': '你好，欢迎使用 NextAI Translator',
     'zh-Hant': '你好，歡迎使用 NextAI Translator',
     'yue': '你好，歡迎使用 NextAI Translator',
     'lzh': '你好，歡迎使用 NextAI Translator',

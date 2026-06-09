@@ -37,78 +37,6 @@ fn describe_window(window: &ActiveWindow) -> String {
     )
 }
 
-#[cfg(target_os = "macos")]
-fn focus_window(window: &ActiveWindow) -> Result<(), String> {
-    use cocoa::appkit::{NSApplicationActivateIgnoringOtherApps, NSRunningApplication};
-    #[cfg(not(target_arch = "aarch64"))]
-    use cocoa::base::NO;
-    use cocoa::base::{id, nil};
-
-    unsafe {
-        let running_app: id = <id as NSRunningApplication>::runningApplicationWithProcessIdentifier(
-            nil,
-            window.process_id as i32,
-        );
-        if running_app != nil {
-            let activated_raw = NSRunningApplication::activateWithOptions_(
-                running_app,
-                NSApplicationActivateIgnoringOtherApps,
-            );
-            let activated = {
-                #[cfg(target_arch = "aarch64")]
-                {
-                    activated_raw
-                }
-                #[cfg(not(target_arch = "aarch64"))]
-                {
-                    activated_raw != NO
-                }
-            };
-            if activated {
-                debug_println!(
-                    "[insertion] activated app via NSRunningApplication: {}",
-                    window.app_name
-                );
-                return Ok(());
-            } else {
-                debug_println!(
-                    "[insertion] NSRunningApplication activation returned false for {}",
-                    window.app_name
-                );
-            }
-        } else {
-            debug_println!(
-                "[insertion] NSRunningApplication not found for pid {} ({})",
-                window.process_id,
-                window.app_name
-            );
-        }
-    }
-
-    if window.app_name.is_empty() {
-        return Err("previous window app name is empty".to_string());
-    }
-    let script = format!(
-        r#"tell application "{}" to activate"#,
-        window.app_name.replace('"', "\\\"")
-    );
-    let status = std::process::Command::new("osascript")
-        .arg("-e")
-        .arg(&script)
-        .status()
-        .map_err(|e| e.to_string())?;
-    if status.success() {
-        debug_println!(
-            "[insertion] activated app via AppleScript: {}",
-            window.app_name
-        );
-        Ok(())
-    } else {
-        Err(format!("failed to focus app {}", window.app_name))
-    }
-}
-
-#[cfg(target_os = "windows")]
 fn parse_hwnd(window_id: &str) -> Result<windows::Win32::Foundation::HWND, String> {
     use std::ffi::c_void;
     use windows::Win32::Foundation::HWND;
@@ -124,7 +52,6 @@ fn parse_hwnd(window_id: &str) -> Result<windows::Win32::Foundation::HWND, Strin
     Ok(HWND(value as *mut c_void))
 }
 
-#[cfg(target_os = "windows")]
 fn focus_window(window: &ActiveWindow) -> Result<(), String> {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
@@ -166,51 +93,6 @@ fn focus_window(window: &ActiveWindow) -> Result<(), String> {
     }
 }
 
-#[cfg(target_os = "linux")]
-fn focus_window(window: &ActiveWindow) -> Result<(), String> {
-    use xcb::x;
-    use xcb::XidNew;
-
-    let window_id: u32 = window
-        .window_id
-        .parse()
-        .map_err(|_| format!("invalid window id {}", window.window_id))?;
-
-    let (conn, screen_num) = xcb::Connection::connect(None).map_err(|e| e.to_string())?;
-    let setup = conn.get_setup();
-    let screen = setup
-        .roots()
-        .nth(screen_num as usize)
-        .ok_or_else(|| "failed to get screen".to_string())?;
-    let root = screen.root();
-
-    let atom = |name: &str| -> Result<x::Atom, String> {
-        let cookie = conn.send_request(&x::InternAtom {
-            only_if_exists: false,
-            name: name.as_bytes(),
-        });
-        conn.wait_for_reply(cookie)
-            .map(|reply| reply.atom())
-            .map_err(|e| e.to_string())
-    };
-
-    let net_active_window = atom("_NET_ACTIVE_WINDOW")?;
-
-    let data = x::ClientMessageData::Data32([1, x::CURRENT_TIME, window_id, 0, 0]);
-    let window = unsafe { x::Window::new(window_id) };
-    let event = x::ClientMessageEvent::new(window, net_active_window, data);
-
-    conn.send_request(&x::SendEvent {
-        propagate: false,
-        destination: x::SendEventDest::Window(root),
-        event: &event,
-        event_mask: x::EventMask::SUBSTRUCTURE_REDIRECT | x::EventMask::SUBSTRUCTURE_NOTIFY,
-    });
-    conn.flush().map_err(|e| e.to_string())?;
-
-    Ok(())
-}
-
 fn focus_previous_window() -> Result<(), String> {
     if let Some(window) = PREVIOUS_ACTIVE_WINDOW.lock().clone() {
         debug_println!(
@@ -248,7 +130,7 @@ fn replace_input_with_text(text: &str) -> Result<(), String> {
 #[specta::specta]
 pub async fn insert_translation_into_previous_input(text: String) -> Result<(), String> {
     focus_previous_window()?;
-    thread::sleep(Duration::from_millis(200));
+    tokio::time::sleep(Duration::from_millis(200)).await;
     replace_input_with_text(&text)?;
     debug_println!("[insertion] inserted translation ({} chars)", text.len());
     Ok(())

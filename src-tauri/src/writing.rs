@@ -306,8 +306,8 @@ pub fn finish_writing() {
         }
 
         let handle_clone = handle.clone();
-        std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(700));
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(700)).await;
             *crate::windows::WRITING_INDICATOR_PENDING_LANG.lock() = None;
             if let Some(window) =
                 handle_clone.get_webview_window(crate::windows::WRITING_INDICATOR_WIN_NAME)

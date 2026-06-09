@@ -1,7 +1,6 @@
 /* eslint-disable no-control-regex */
 /* eslint-disable no-misleading-character-class */
 
-import { isTraditional } from '../traditional-or-simplified'
 import ISO6391 from 'iso-639-1'
 import { LANG_CONFIGS, Config as OptionalLangConfig } from './data'
 import { oneLine } from 'common-tags'
@@ -15,7 +14,6 @@ export type LangCode =
     | 'en-GB'
     | 'en-CA'
     | 'en-AU'
-    | 'zh-Hans'
     | 'zh-Hant'
     | 'yue'
     | 'lzh'
@@ -101,7 +99,7 @@ export function getLangName(langCode: string): string {
 
 export async function googleDetectLang(text: string): Promise<LangCode> {
     const langMap: Record<string, LangCode> = {
-        'zh-CN': 'zh-Hans',
+        'zh-CN': 'zh-Hant',
         'zh-TW': 'zh-Hant',
         'ja': 'ja',
         'en': 'en',
@@ -207,7 +205,7 @@ export async function bingDetectLang(text: string): Promise<LangCode> {
 
 export async function baiduDetectLang(text: string): Promise<LangCode> {
     const langMap: Record<string, LangCode> = {
-        zh: 'zh-Hans',
+        zh: 'zh-Hant',
         cht: 'zh-Hant',
         en: 'en',
         jp: 'ja',
@@ -333,7 +331,7 @@ export async function localDetectLang(text: string): Promise<LangCode> {
     if (langWeightResult[1] === 0) {
         return 'en'
     } else if (langWeightResult[0] === 'zh') {
-        return isTraditional(text) ? 'zh-Hant' : 'zh-Hans'
+        return 'zh-Hant'
     } else {
         return langWeightResult[0] as LangCode
     }

@@ -1,60 +1,25 @@
-#[cfg(target_os = "macos")]
-use accessibility_sys_ng::{kAXErrorSuccess, AXError};
-#[cfg(target_os = "macos")]
-use core_graphics::geometry::CGRect;
 use enigo::*;
 use parking_lot::Mutex;
-#[cfg(target_os = "macos")]
-use std::mem::MaybeUninit;
 use std::{thread, time::Duration};
-#[cfg(target_os = "macos")]
-use tauri::path::BaseDirectory;
 use tauri::Emitter;
-#[cfg(target_os = "macos")]
-use tauri::Manager;
 
 use crate::APP_HANDLE;
 
 static SELECT_ALL: Mutex<()> = Mutex::new(());
 
 #[allow(dead_code)]
-#[cfg(not(target_os = "macos"))]
 pub fn select_all(enigo: &mut Enigo) {
     let _guard = SELECT_ALL.lock();
 
     up_control_keys(enigo);
 
     enigo.key(Key::Control, Direction::Press).unwrap();
-    #[cfg(target_os = "windows")]
     enigo.key(Key::A, Direction::Click).unwrap();
-    #[cfg(target_os = "linux")]
-    enigo.key(Key::Unicode('a'), Direction::Click).unwrap();
     enigo.key(Key::Control, Direction::Release).unwrap();
-}
-
-#[allow(dead_code)]
-#[cfg(target_os = "macos")]
-pub fn select_all(_enigo: &mut Enigo) {
-    let _guard = SELECT_ALL.lock();
-
-    let apple_script = APP_HANDLE
-        .get()
-        .unwrap()
-        .path()
-        .resolve("resources/select-all.applescript", BaseDirectory::Resource)
-        .expect("failed to resolve select-all.applescript");
-
-    std::process::Command::new("osascript")
-        .arg(apple_script)
-        .spawn()
-        .expect("failed to run applescript")
-        .wait()
-        .expect("failed to wait");
 }
 
 pub static INPUT_LOCK: Mutex<()> = Mutex::new(());
 
-#[cfg(not(target_os = "macos"))]
 pub fn left_arrow_click(enigo: &mut Enigo, n: usize) {
     let _guard = INPUT_LOCK.lock();
 
@@ -63,27 +28,6 @@ pub fn left_arrow_click(enigo: &mut Enigo, n: usize) {
     }
 }
 
-#[cfg(target_os = "macos")]
-pub fn left_arrow_click(_enigo: &mut Enigo, n: usize) {
-    let _guard = INPUT_LOCK.lock();
-
-    let apple_script = APP_HANDLE
-        .get()
-        .unwrap()
-        .path()
-        .resolve("resources/left.applescript", BaseDirectory::Resource)
-        .expect("failed to resolve left.applescript");
-
-    std::process::Command::new("osascript")
-        .arg(apple_script)
-        .arg(n.to_string())
-        .spawn()
-        .expect("failed to run applescript")
-        .wait()
-        .expect("failed to wait");
-}
-
-#[cfg(not(target_os = "macos"))]
 pub fn right_arrow_click(enigo: &mut Enigo, n: usize) {
     let _guard = INPUT_LOCK.lock();
 
@@ -92,27 +36,6 @@ pub fn right_arrow_click(enigo: &mut Enigo, n: usize) {
     }
 }
 
-#[cfg(target_os = "macos")]
-pub fn right_arrow_click(_enigo: &mut Enigo, n: usize) {
-    let _guard = INPUT_LOCK.lock();
-
-    let apple_script = APP_HANDLE
-        .get()
-        .unwrap()
-        .path()
-        .resolve("resources/right.applescript", BaseDirectory::Resource)
-        .expect("failed to resolve right.applescript");
-
-    std::process::Command::new("osascript")
-        .arg(apple_script)
-        .arg(n.to_string())
-        .spawn()
-        .expect("failed to run applescript")
-        .wait()
-        .expect("failed to wait");
-}
-
-#[cfg(not(target_os = "macos"))]
 pub fn backspace_click(enigo: &mut Enigo, n: usize) {
     let _guard = INPUT_LOCK.lock();
 
@@ -121,118 +44,37 @@ pub fn backspace_click(enigo: &mut Enigo, n: usize) {
     }
 }
 
-#[cfg(target_os = "macos")]
-pub fn backspace_click(_enigo: &mut Enigo, n: usize) {
-    let _guard = INPUT_LOCK.lock();
-
-    let apple_script = APP_HANDLE
-        .get()
-        .unwrap()
-        .path()
-        .resolve("resources/backspace.applescript", BaseDirectory::Resource)
-        .expect("failed to resolve backspace.applescript");
-
-    std::process::Command::new("osascript")
-        .arg(apple_script)
-        .arg(n.to_string())
-        .spawn()
-        .expect("failed to run applescript")
-        .wait()
-        .expect("failed to wait");
-}
-
 #[allow(dead_code)]
-#[cfg(not(target_os = "macos"))]
 pub fn up_control_keys(enigo: &mut Enigo) {
     enigo.key(Key::Control, Direction::Release).unwrap();
     enigo.key(Key::Alt, Direction::Release).unwrap();
     enigo.key(Key::Shift, Direction::Release).unwrap();
     enigo.key(Key::Space, Direction::Release).unwrap();
     enigo.key(Key::Tab, Direction::Release).unwrap();
-}
-
-#[allow(dead_code)]
-#[cfg(target_os = "macos")]
-pub fn up_control_keys(enigo: &mut Enigo) {
-    enigo.key(Key::Control, Direction::Release).unwrap();
-    enigo.key(Key::Meta, Direction::Release).unwrap();
-    enigo.key(Key::Alt, Direction::Release).unwrap();
-    enigo.key(Key::Shift, Direction::Release).unwrap();
-    enigo.key(Key::Space, Direction::Release).unwrap();
-    enigo.key(Key::Tab, Direction::Release).unwrap();
-    enigo.key(Key::Option, Direction::Release).unwrap();
 }
 
 static COPY_PASTE: Mutex<()> = Mutex::new(());
 
 #[allow(dead_code)]
-#[cfg(not(target_os = "macos"))]
 pub fn copy(enigo: &mut Enigo) {
     let _guard = COPY_PASTE.lock();
 
     up_control_keys(enigo);
 
     enigo.key(Key::Control, Direction::Press).unwrap();
-    #[cfg(target_os = "windows")]
     enigo.key(Key::C, Direction::Click).unwrap();
-    #[cfg(target_os = "linux")]
-    enigo.key(Key::Unicode('c'), Direction::Click).unwrap();
     enigo.key(Key::Control, Direction::Release).unwrap();
 }
 
 #[allow(dead_code)]
-#[cfg(target_os = "macos")]
-pub fn copy(_enigo: &mut Enigo) {
-    let _guard = COPY_PASTE.lock();
-
-    let apple_script = APP_HANDLE
-        .get()
-        .unwrap()
-        .path()
-        .resolve("resources/copy.applescript", BaseDirectory::Resource)
-        .expect("failed to resolve copy.applescript");
-
-    std::process::Command::new("osascript")
-        .arg(apple_script)
-        .spawn()
-        .expect("failed to run applescript")
-        .wait()
-        .expect("failed to wait");
-}
-
-#[allow(dead_code)]
-#[cfg(not(target_os = "macos"))]
 pub fn paste(enigo: &mut Enigo) {
     let _guard = COPY_PASTE.lock();
 
     up_control_keys(enigo);
 
     enigo.key(Key::Control, Direction::Press).unwrap();
-    #[cfg(target_os = "windows")]
     enigo.key(Key::V, Direction::Click).unwrap();
-    #[cfg(target_os = "linux")]
-    enigo.key(Key::Unicode('v'), Direction::Click).unwrap();
     enigo.key(Key::Control, Direction::Release).unwrap();
-}
-
-#[allow(dead_code)]
-#[cfg(target_os = "macos")]
-pub fn paste(_enigo: &mut Enigo) {
-    let _guard = COPY_PASTE.lock();
-
-    let apple_script = APP_HANDLE
-        .get()
-        .unwrap()
-        .path()
-        .resolve("resources/paste.applescript", BaseDirectory::Resource)
-        .expect("failed to resolve paste.applescript");
-
-    std::process::Command::new("osascript")
-        .arg(apple_script)
-        .spawn()
-        .expect("failed to run applescript")
-        .wait()
-        .expect("failed to wait");
 }
 
 pub fn get_selected_text_by_clipboard(
@@ -308,267 +150,16 @@ pub fn get_selected_text_by_clipboard(
     }
 }
 
-#[allow(dead_code)]
-#[cfg(target_os = "macos")]
-unsafe fn ax_call<F, V>(f: F) -> Result<V, AXError>
-where
-    F: Fn(*mut V) -> AXError,
-{
-    let mut result = MaybeUninit::uninit();
-    let err = (f)(result.as_mut_ptr());
-
-    if err != kAXErrorSuccess {
-        return Err(err);
-    }
-
-    Ok(result.assume_init())
-}
-
-#[cfg(target_os = "macos")]
-fn get_selected_text_frame_by_ax() -> Result<CGRect, Box<dyn std::error::Error>> {
-    use accessibility_ng::{AXAttribute, AXUIElement, AXValue};
-    use accessibility_sys_ng::{
-        kAXBoundsForRangeParameterizedAttribute, kAXFocusedUIElementAttribute,
-        kAXSelectedTextRangeAttribute,
-    };
-    use core_foundation::string::CFString;
-
-    let system_element = AXUIElement::system_wide();
-    let Some(focused_element) = system_element
-        .attribute(&AXAttribute::new(&CFString::from_static_string(
-            kAXFocusedUIElementAttribute,
-        )))
-        .map(|element| element.downcast_into::<AXUIElement>())
-        .ok()
-        .flatten()
-    else {
-        return Ok(CGRect::default());
-    };
-    let Some(selection_range_value) = focused_element
-        .attribute(&AXAttribute::new(&CFString::from_static_string(
-            kAXSelectedTextRangeAttribute,
-        )))
-        .map(|value| value.downcast_into::<AXValue>())
-        .ok()
-        .flatten()
-    else {
-        return Ok(CGRect::default());
-    };
-    let Some(selection_bounds_value) = focused_element
-        .parameterized_attribute(
-            &AXAttribute::new(&CFString::from_static_string(
-                kAXBoundsForRangeParameterizedAttribute,
-            )),
-            &selection_range_value,
-        )
-        .map(|value| value.downcast_into::<AXValue>())
-        .ok()
-        .flatten()
-    else {
-        return Ok(CGRect::default());
-    };
-    selection_bounds_value
-        .get_value::<CGRect>()
-        .map_err(|err| err.into())
-}
-
-#[cfg(target_os = "macos")]
-pub fn is_valid_selected_frame() -> Result<bool, Box<dyn std::error::Error>> {
-    use crate::windows::get_mouse_location;
-    use core_graphics::geometry::{CGPoint, CGSize};
-    use debug_print::debug_println;
-
-    match get_selected_text_frame_by_ax() {
-        Ok(selected_frame) => {
-            if selected_frame.size.width == 0.0 && selected_frame.size.height == 0.0 {
-                debug_println!("Selected frame is empty");
-                return Ok(true);
-            }
-
-            let expand_value = 40.0;
-            let origin = CGPoint::new(
-                selected_frame.origin.x - expand_value,
-                selected_frame.origin.y - expand_value,
-            );
-            let size = CGSize::new(
-                selected_frame.size.width + expand_value * 2.0,
-                selected_frame.size.height + expand_value * 2.0,
-            );
-            let expanded_selected_text_frame = CGRect::new(&origin, &size);
-            let (mouse_x, mouse_y) = get_mouse_location()?;
-            let mouse_position_point = CGPoint::new(mouse_x as f64, mouse_y as f64);
-            debug_println!(
-                "selected_frame: {:?}, expanded_selected_text_frame: {:?}, mouse_position_point: {:?}",
-                selected_frame,
-                expanded_selected_text_frame,
-                mouse_position_point
-            );
-            Ok(expanded_selected_text_frame.contains(&mouse_position_point))
-        }
-        Err(err) => {
-            debug_println!("get_selected_text_frame_by_ax error: {}", err);
-            Err(err)
-        }
-    }
-}
-
-/// Reads the *currently selected* text of the focused UI element via the
-/// macOS Accessibility API (kAXSelectedTextAttribute). Returns `None` if AX
-/// isn't available, no element is focused, the selection is empty, or the
-/// attribute is unsupported by the element (common in custom widgets). This is
-/// the preferred read path because it does NOT touch the clipboard, fire
-/// keystrokes, or move the cursor.
-#[cfg(target_os = "macos")]
-pub fn get_selected_text_via_ax() -> Option<String> {
-    use accessibility_ng::{AXAttribute, AXUIElement};
-    use accessibility_sys_ng::{kAXFocusedUIElementAttribute, kAXSelectedTextAttribute};
-    use core_foundation::base::{CFType, TCFType};
-    use core_foundation::string::CFString;
-
-    let system = AXUIElement::system_wide();
-    let focused = system
-        .attribute(&AXAttribute::new(&CFString::from_static_string(
-            kAXFocusedUIElementAttribute,
-        )))
-        .ok()
-        .and_then(|v: CFType| v.downcast_into::<AXUIElement>())?;
-
-    let value = focused
-        .attribute(&AXAttribute::new(&CFString::from_static_string(
-            kAXSelectedTextAttribute,
-        )))
-        .ok()?;
-    let s: CFString = value.downcast::<CFString>()?;
-    let text = s.to_string();
-    if text.is_empty() {
-        None
-    } else {
-        Some(text)
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
 pub fn get_selected_text_via_ax() -> Option<String> {
     None
 }
 
-/// Reads the entire value of the focused UI element via the macOS
-/// Accessibility API (kAXValueAttribute). Returns `None` if AX isn't available,
-/// no element is focused, the value is empty, or the element doesn't expose
-/// a string value (e.g. password fields). Like `get_selected_text_via_ax`,
-/// this does NOT touch clipboard or fire keystrokes — the previous select-all
-/// + Cmd+C dance was visually disruptive on every trigger.
-#[cfg(target_os = "macos")]
-pub fn get_focused_text_via_ax() -> Option<String> {
-    use accessibility_ng::{AXAttribute, AXUIElement};
-    use accessibility_sys_ng::{kAXFocusedUIElementAttribute, kAXValueAttribute};
-    use core_foundation::base::{CFType, TCFType};
-    use core_foundation::string::CFString;
-
-    let system = AXUIElement::system_wide();
-    let focused = system
-        .attribute(&AXAttribute::new(&CFString::from_static_string(
-            kAXFocusedUIElementAttribute,
-        )))
-        .ok()
-        .and_then(|v: CFType| v.downcast_into::<AXUIElement>())?;
-
-    let value = focused
-        .attribute(&AXAttribute::new(&CFString::from_static_string(
-            kAXValueAttribute,
-        )))
-        .ok()?;
-    let s: CFString = value.downcast::<CFString>()?;
-    let text = s.to_string();
-    if text.is_empty() {
-        None
-    } else {
-        Some(text)
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
 pub fn get_focused_text_via_ax() -> Option<String> {
     None
 }
 
-/// Anchor rect for the floating writing-indicator panel, in macOS *logical* screen
-/// points (top-left origin), i.e. the same coordinate space that AX position/size
-/// attributes use. Returns `None` if neither the current selection bounds nor the
-/// focused element frame are available; the caller should fall back to the mouse
-/// position in that case.
-#[cfg(target_os = "macos")]
-pub fn get_writing_anchor_rect() -> Option<(f64, f64, f64, f64)> {
-    if let Ok(rect) = get_selected_text_frame_by_ax() {
-        if rect.size.width > 0.0 && rect.size.height > 0.0 {
-            return Some((
-                rect.origin.x,
-                rect.origin.y,
-                rect.size.width,
-                rect.size.height,
-            ));
-        }
-    }
-    if let Ok(rect) = get_focused_element_frame_by_ax() {
-        if rect.size.width > 0.0 && rect.size.height > 0.0 {
-            return Some((
-                rect.origin.x,
-                rect.origin.y,
-                rect.size.width,
-                rect.size.height,
-            ));
-        }
-    }
-    None
-}
-
-#[cfg(not(target_os = "macos"))]
 pub fn get_writing_anchor_rect() -> Option<(f64, f64, f64, f64)> {
     None
-}
-
-#[cfg(target_os = "macos")]
-fn get_focused_element_frame_by_ax() -> Result<CGRect, Box<dyn std::error::Error>> {
-    use accessibility_ng::{AXAttribute, AXUIElement, AXValue};
-    use accessibility_sys_ng::{
-        kAXFocusedUIElementAttribute, kAXPositionAttribute, kAXSizeAttribute,
-    };
-    use core_foundation::string::CFString;
-    use core_graphics::geometry::{CGPoint, CGSize};
-
-    let system_element = AXUIElement::system_wide();
-    let Some(focused_element) = system_element
-        .attribute(&AXAttribute::new(&CFString::from_static_string(
-            kAXFocusedUIElementAttribute,
-        )))
-        .map(|element| element.downcast_into::<AXUIElement>())
-        .ok()
-        .flatten()
-    else {
-        return Ok(CGRect::default());
-    };
-
-    let position = focused_element
-        .attribute(&AXAttribute::new(&CFString::from_static_string(
-            kAXPositionAttribute,
-        )))
-        .map(|v| v.downcast_into::<AXValue>())
-        .ok()
-        .flatten()
-        .and_then(|v| v.get_value::<CGPoint>().ok())
-        .unwrap_or(CGPoint::new(0.0, 0.0));
-
-    let size = focused_element
-        .attribute(&AXAttribute::new(&CFString::from_static_string(
-            kAXSizeAttribute,
-        )))
-        .map(|v| v.downcast_into::<AXValue>())
-        .ok()
-        .flatten()
-        .and_then(|v| v.get_value::<CGSize>().ok())
-        .unwrap_or(CGSize::new(0.0, 0.0));
-
-    Ok(CGRect::new(&position, &size))
 }
 
 pub fn send_text(text: String) {

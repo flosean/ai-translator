@@ -30,11 +30,11 @@ import {
     getAssetUrl,
     isUserscript,
     setSettings,
-    isBrowserExtensionContentScript,
     isMacOS,
 } from '../utils'
 import { InnerSettings } from './Settings'
-import { containerID, popupCardInnerContainerId } from '../../browser-extension/content_script/consts'
+const containerID = 'nextai-translator-container'
+const popupCardInnerContainerId = 'nextai-translator-popup-card-inner-container'
 import Dropzone from 'react-dropzone'
 import { RecognizeResult, createWorker } from 'tesseract.js'
 import { BsTextareaT } from 'react-icons/bs'
@@ -963,7 +963,7 @@ function InnerTranslator(props: IInnerTranslatorProps) {
                             (!stopAutomaticallyChangeTargetLang.current || newSourceLang === targetLang_)
                         ) {
                             return (
-                                (newSourceLang === 'zh-Hans' || newSourceLang === 'zh-Hant'
+                                (newSourceLang === 'zh-Hant'
                                     ? 'en'
                                     : (settings?.defaultTargetLanguage as LangCode | undefined)) ?? 'en'
                             )
@@ -2721,16 +2721,7 @@ function InnerTranslator(props: IInnerTranslatorProps) {
                             onClick={async (e) => {
                                 e.stopPropagation()
                                 e.preventDefault()
-                                if (isBrowserExtensionContentScript()) {
-                                    const browser = (await import('webextension-polyfill')).default
-                                    await browser.runtime.sendMessage({
-                                        type: 'openOptionsPage',
-                                        openaiAPIKeyPromotionID: openaiAPIKeyPromotion?.id,
-                                        headerPromotionID: settingsHeaderPromotion?.id,
-                                    })
-                                } else {
-                                    setShowSettings((s: boolean) => !s)
-                                }
+                                setShowSettings((s: boolean) => !s)
                             }}
                         >
                             <div

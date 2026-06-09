@@ -25,7 +25,6 @@ use serde_json::json;
 use std::env;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use sysinfo::{CpuExt, System, SystemExt};
 use tauri_plugin_aptabase::EventTracker;
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_updater::UpdaterExt;
@@ -62,7 +61,6 @@ use tokio::runtime::{
 
 pub static APP_HANDLE: OnceCell<AppHandle> = OnceCell::new();
 pub static ALWAYS_ON_TOP: AtomicBool = AtomicBool::new(false);
-pub static CPU_VENDOR: Mutex<String> = Mutex::new(String::new());
 pub static SELECTED_TEXT: Mutex<String> = Mutex::new(String::new());
 pub static PREVIOUS_PRESS_TIME: Mutex<u128> = Mutex::new(0);
 pub static PREVIOUS_RELEASE_TIME: Mutex<u128> = Mutex::new(0);
@@ -112,20 +110,8 @@ fn get_update_result() -> (bool, Option<UpdateResult>) {
     }
     return (true, UPDATE_RESULT.lock().clone().unwrap());
 }
-#[cfg(target_os = "macos")]
 fn query_accessibility_permissions() -> bool {
-    let trusted = macos_accessibility_client::accessibility::application_is_trusted_with_prompt();
-    if trusted {
-        print!("Application is totally trusted!");
-    } else {
-        print!("Application isn't trusted :(");
-    }
-    trusted
-}
-
-#[cfg(not(target_os = "macos"))]
-fn query_accessibility_permissions() -> bool {
-    return true;
+    true
 }
 
 #[inline]
@@ -155,13 +141,6 @@ fn launch_ipc_server(server: &Server) {
 
 fn bind_mouse_hook() {
     if !query_accessibility_permissions() {
-        return;
-    }
-
-    // Mouse event hook requires `sudo` permission on linux.
-    // Let's just skip it.
-    if cfg!(target_os = "linux") {
-        println!("mouse event hook skipped in linux!");
         return;
     }
 
@@ -225,34 +204,16 @@ fn bind_mouse_hook() {
                             Ok(position) => {
                                 let scale_factor = window.scale_factor().unwrap_or(1.0);
                                 if let Ok(size) = window.outer_size() {
-                                    if cfg!(target_os = "macos") {
-                                        let LogicalPosition { x: x1, y: y1 } =
-                                            position.to_logical::<i32>(scale_factor);
-                                        let LogicalSize {
-                                            width: mut w,
-                                            height: mut h,
-                                        } = size.to_logical::<i32>(scale_factor);
-                                        if cfg!(target_os = "windows") {
-                                            w = (20.0 as f64 * scale_factor) as i32;
-                                            h = (20.0 as f64 * scale_factor) as i32;
-                                        }
-                                        let (x2, y2) = (x1 + w, y1 + h);
-                                        let res = x >= x1 && x <= x2 && y >= y1 && y <= y2;
-                                        res
-                                    } else {
-                                        let PhysicalPosition { x: x1, y: y1 } = position;
-                                        let PhysicalSize {
-                                            width: mut w,
-                                            height: mut h,
-                                        } = size;
-                                        if cfg!(target_os = "windows") {
-                                            w = (20.0 as f64 * scale_factor) as u32;
-                                            h = (20.0 as f64 * scale_factor) as u32;
-                                        }
-                                        let (x2, y2) = (x1 + w as i32, y1 + h as i32);
-                                        let res = x >= x1 && x <= x2 && y >= y1 && y <= y2;
-                                        res
-                                    }
+                                    let PhysicalPosition { x: x1, y: y1 } = position;
+                                    let PhysicalSize {
+                                        width: mut w,
+                                        height: mut h,
+                                    } = size;
+                                    w = (20.0 as f64 * scale_factor) as u32;
+                                    h = (20.0 as f64 * scale_factor) as u32;
+                                    let (x2, y2) = (x1 + w as i32, y1 + h as i32);
+                                    let res = x >= x1 && x <= x2 && y >= y1 && y <= y2;
+                                    res
                                 } else {
                                     false
                                 }
@@ -270,12 +231,6 @@ fn bind_mouse_hook() {
                 // debug_println!("is_click_on_thumb: {}", is_click_on_thumb);
                 if !is_text_selected_event && !is_click_on_thumb {
                     windows::close_thumb();
-                    // println!("not text selected event");
-                    // println!("is_click_on_thumb: {}", is_click_on_thumb);
-                    // println!("mouse_distance: {}", mouse_distance);
-                    // println!("pressed_time: {}", pressed_time);
-                    // println!("released_time: {}", current_release_time - previous_release_time);
-                    // println!("is_double_click: {}", is_double_click);
                     return;
                 }
 
@@ -284,15 +239,6 @@ fn bind_mouse_hook() {
                         return;
                     }
                     std::thread::spawn(move || {
-                        #[cfg(target_os = "macos")]
-                        {
-                            if !utils::is_valid_selected_frame().unwrap_or(false) {
-                                debug_println!("No valid selected frame");
-                                windows::close_thumb();
-                                return;
-                            }
-                        }
-
                         let _lock = RELEASE_THREAD_ID.lock();
                         let selected_text = get_selected_text().unwrap_or_default();
                         if !selected_text.is_empty() {
@@ -342,13 +288,6 @@ fn bind_mouse_hook() {
 fn main() {
     let _ = init_tokio_runtime();
     let silently = env::args().any(|arg| arg == "--silently");
-
-    let mut sys = System::new();
-    sys.refresh_cpu(); // Refreshing CPU information.
-    if let Some(cpu) = sys.cpus().first() {
-        let vendor_id = cpu.vendor_id().to_string();
-        *CPU_VENDOR.lock() = vendor_id;
-    }
 
     let specta_builder = tauri_specta::Builder::<tauri::Wry>::new()
         .commands(tauri_specta::collect_commands![
@@ -403,7 +342,7 @@ fn main() {
 
     let specta_builder_setup = specta_builder.clone();
 
-    #[cfg_attr(not(target_os = "macos"), allow(unused_mut))]
+    #[allow(unused_mut)]
     let mut app = tauri::Builder::default()
         .plugin(
             tauri_plugin_aptabase::Builder::new("A-US-9856842764")
@@ -470,38 +409,15 @@ fn main() {
                 window.set_focus().unwrap();
                 window.show().unwrap();
             }
-            if !query_accessibility_permissions() {
-                if let Some(window) = app.get_webview_window(TRANSLATOR_WIN_NAME) {
-                    window.minimize().unwrap();
-                }
-                app.notification()
-                    .builder()
-                    .title("Accessibility permissions")
-                    .body("Please grant accessibility permissions to the app")
-                    .icon("icon.png")
-                    .show()
-                    .unwrap();
-            }
             std::thread::spawn(move || {
-                #[cfg(target_os = "windows")]
-                {
-                    let server = Server::http("127.0.0.1:62007").unwrap();
-                    launch_ipc_server(&server);
-                }
-                #[cfg(not(target_os = "windows"))]
-                {
-                    use std::path::Path;
-                    let path = Path::new("/tmp/openai-translator.sock");
-                    std::fs::remove_file(path).unwrap_or_default();
-                    let server = Server::http_unix(path).unwrap();
-                    launch_ipc_server(&server);
-                }
+                let server = Server::http("127.0.0.1:62007").unwrap();
+                launch_ipc_server(&server);
             });
 
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 loop {
-                    std::thread::sleep(std::time::Duration::from_secs(60 * 10));
+                    tokio::time::sleep(std::time::Duration::from_secs(60 * 10)).await;
                     let builder = handle.updater_builder();
                     let updater = builder.build().unwrap();
 
@@ -546,15 +462,7 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
-    #[cfg(target_os = "macos")]
-    {
-        let config = config::get_config_by_app(app.handle()).unwrap();
-        if config.hide_the_icon_in_the_dock.unwrap_or(true) {
-            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-        } else {
-            app.set_activation_policy(tauri::ActivationPolicy::Regular);
-        }
-    }
+
 
     app.run(|app, event| match event {
         tauri::RunEvent::Exit { .. } => {
@@ -583,7 +491,7 @@ fn main() {
                                 .automatic_check_for_updates
                                 .is_some_and(|x| x == true)
                         {
-                            std::thread::sleep(std::time::Duration::from_secs(3));
+                            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
                             show_updater_window();
                         }
                     }
@@ -614,16 +522,7 @@ fn main() {
 
             api.prevent_close();
         }
-        #[cfg(target_os = "macos")]
-        tauri::RunEvent::Reopen {
-            has_visible_windows,
-            ..
-        } => {
-            if !has_visible_windows {
-                remember_active_window();
-                windows::show_translator_window(false, false, false);
-            }
-        }
+
         _ => {}
     });
 }
