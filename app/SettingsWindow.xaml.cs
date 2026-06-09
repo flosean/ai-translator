@@ -17,6 +17,8 @@ namespace NextAITranslator
         private readonly Dictionary<string, ProviderConfig> _work = new();
         private string _currentKey = "gemini";
         private bool _loaded;
+        private bool _scaleTouched;
+        private bool _fontTouched;
         private CancellationTokenSource? _modelCts;
 
         public SettingsWindow()
@@ -35,6 +37,9 @@ namespace NextAITranslator
             HotkeyBox.Text = App.Config.Hotkey;
             AutoTranslateBox.IsChecked = App.Config.AutoTranslate;
             SelectScale(App.Config.UiScale);
+            SelectFontSize(App.Config.ContentFontSize);
+            SelectTone(App.Config.Tone);
+            PromptBox.Text = App.Config.PromptTemplate;
 
             SelectProvider(App.Config.Provider);
             _currentKey = SelectedProviderKey();
@@ -66,6 +71,44 @@ namespace NextAITranslator
                 }
             }
             ScaleBox.SelectedIndex = 0;
+        }
+
+        private void SelectFontSize(double size)
+        {
+            foreach (ComboBoxItem item in FontSizeBox.Items)
+            {
+                if (double.TryParse((string)item.Tag, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) &&
+                    Math.Abs(v - size) < 0.001)
+                {
+                    FontSizeBox.SelectedItem = item;
+                    return;
+                }
+            }
+            FontSizeBox.SelectedIndex = -1; // a custom (wheel-set) value not in the list
+        }
+
+        private void SelectTone(string tone)
+        {
+            foreach (ComboBoxItem item in ToneBox.Items)
+            {
+                if ((string)item.Tag == tone) { ToneBox.SelectedItem = item; return; }
+            }
+            ToneBox.SelectedIndex = 0;
+        }
+
+        private void ResetPrompt_Click(object sender, RoutedEventArgs e)
+        {
+            PromptBox.Text = AppConfig.DefaultPromptTemplate;
+        }
+
+        private void ScaleBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_loaded) _scaleTouched = true;
+        }
+
+        private void FontSizeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_loaded) _fontTouched = true;
         }
 
         private void LoadProviderFields(string key)
@@ -193,9 +236,19 @@ namespace NextAITranslator
             App.Config.Hotkey = hotkey;
             App.Config.AutoTranslate = AutoTranslateBox.IsChecked == true;
 
-            if (ScaleBox.SelectedValue is string scaleStr &&
+            if (ToneBox.SelectedValue is string tone)
+                App.Config.Tone = tone;
+
+            var prompt = PromptBox.Text.Trim();
+            App.Config.PromptTemplate = prompt.Length > 0 ? prompt : AppConfig.DefaultPromptTemplate;
+
+            if (_scaleTouched && ScaleBox.SelectedValue is string scaleStr &&
                 double.TryParse(scaleStr, NumberStyles.Float, CultureInfo.InvariantCulture, out var scale))
                 App.Config.UiScale = scale;
+
+            if (_fontTouched && FontSizeBox.SelectedValue is string fontStr &&
+                double.TryParse(fontStr, NumberStyles.Float, CultureInfo.InvariantCulture, out var font))
+                App.Config.ContentFontSize = font;
 
             App.Config.EnsureDefaults();
             App.Config.Save();

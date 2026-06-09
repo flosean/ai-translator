@@ -14,7 +14,7 @@ namespace NextAITranslator.Core
         public static Task TranslateAsync(AppConfig cfg, string targetCode, string text,
             Action<string> onDelta, CancellationToken ct)
         {
-            var (system, user) = Prompts.Translate(targetCode, text);
+            var (system, user) = Prompts.Translate(targetCode, text, cfg.PromptTemplate, cfg.Tone);
             var provider = cfg.CurrentProvider();
             IEngine engine = cfg.Provider == "gemini" ? Gemini : OpenAI;
             return engine.TranslateAsync(system, user, provider, onDelta, ct);

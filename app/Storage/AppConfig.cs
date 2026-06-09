@@ -30,6 +30,22 @@ namespace NextAITranslator.Storage
         /// <summary>UI zoom factor (1.0 = 100%). Clamped to [1.0, 2.0] on load.</summary>
         public double UiScale { get; set; } = 1.0;
 
+        /// <summary>Font size (px) for the input/output translation text. Clamped to [12, 40] on load.</summary>
+        public double ContentFontSize { get; set; } = 16.0;
+
+        /// <summary>The default system prompt. Use {target} as a placeholder for the target language name.</summary>
+        public const string DefaultPromptTemplate =
+            "You are a professional translation engine. Translate the user's text into {target}. " +
+            "Only output the translated text — no explanations, no notes, no commentary, " +
+            "no original text, and no surrounding quotation marks. " +
+            "Preserve the original meaning and formatting (line breaks, lists) as closely as possible.";
+
+        /// <summary>Editable system prompt template. {target} is replaced with the target language.</summary>
+        public string PromptTemplate { get; set; } = DefaultPromptTemplate;
+
+        /// <summary>Output tone key: default / professional / friendly / formal / casual.</summary>
+        public string Tone { get; set; } = "default";
+
         // ---- persistence ----
 
         private static readonly string Dir = Path.Combine(
@@ -102,6 +118,12 @@ namespace NextAITranslator.Storage
 
             if (double.IsNaN(UiScale) || UiScale < 1.0) UiScale = 1.0;
             if (UiScale > 2.0) UiScale = 2.0;
+
+            if (double.IsNaN(ContentFontSize) || ContentFontSize < 12.0) ContentFontSize = 16.0;
+            if (ContentFontSize > 40.0) ContentFontSize = 40.0;
+
+            if (string.IsNullOrWhiteSpace(PromptTemplate)) PromptTemplate = DefaultPromptTemplate;
+            if (string.IsNullOrWhiteSpace(Tone)) Tone = "default";
         }
 
         public ProviderConfig CurrentProvider()

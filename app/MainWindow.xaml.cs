@@ -21,7 +21,34 @@ namespace NextAITranslator
             SelectLang(App.Config.LastTargetLang);
             DarkTitleBar.Apply(this);
             ApplyScale();
+            ApplyContentFont();
             PreviewKeyDown += OnPreviewKeyDown;
+            InputBox.PreviewMouseWheel += OnContentWheel;
+            OutputBox.PreviewMouseWheel += OnContentWheel;
+        }
+
+        // ----- translation content font size (independent of overall UI scale) -----
+
+        public void ApplyContentFont()
+        {
+            InputBox.FontSize = App.Config.ContentFontSize;
+            OutputBox.FontSize = App.Config.ContentFontSize;
+        }
+
+        private void SetContentFont(double size)
+        {
+            size = Math.Clamp(Math.Round(size), 12.0, 40.0);
+            App.Config.ContentFontSize = size;
+            App.Config.Save();
+            ApplyContentFont();
+        }
+
+        private void OnContentWheel(object sender, System.Windows.Input.MouseWheelEventArgs e)
+        {
+            if ((Keyboard.Modifiers & ModifierKeys.Control) == 0)
+                return;
+            SetContentFont(App.Config.ContentFontSize + (e.Delta > 0 ? 1 : -1));
+            e.Handled = true;
         }
 
         // ----- UI scale -----
@@ -151,8 +178,9 @@ namespace NextAITranslator
         {
             var win = new SettingsWindow { Owner = this };
             win.ShowDialog();
-            // Scale may have changed in settings.
+            // Scale / content font may have changed in settings.
             ApplyScale();
+            ApplyContentFont();
         }
 
         private async void TranslateButton_Click(object sender, RoutedEventArgs e)
