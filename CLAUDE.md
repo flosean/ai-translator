@@ -29,6 +29,17 @@ Run from the repo root:
 There is no test project; verification is done with throwaway console harnesses against a
 local `HttpListener` serving canned SSE/JSON (see git history), then removed.
 
+## Versioning
+
+The exe/assembly version is **derived from git tags by MinVer** (build-time only,
+`PrivateAssets=all` — not shipped in the exe). There is no `<Version>` in the `.csproj`.
+
+- Tags are `v`-prefixed (`MinVerTagPrefix=v`), e.g. `v1.0.0`. `v1.0.0` is the baseline.
+- To cut a release: `git tag vX.Y.Z` on the commit you want, then `git push origin vX.Y.Z`.
+  The next build of that commit reports `X.Y.Z`.
+- Between tags, builds get an auto-incremented pre-release (e.g. `1.0.1-alpha.0.4+<sha>`),
+  so never hand-edit the version — move the tag instead.
+
 ## Architecture (`app/`)
 
 - `App.xaml.cs` — startup: single-instance mutex, `--silently`, loads config, creates the
