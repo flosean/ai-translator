@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Guidance for Claude Code when working in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## What this is
 
@@ -13,7 +13,7 @@ and essentially no NuGet dependencies — only the .NET BCL + WPF.
 
 ## Commands
 
-Run from `app/`:
+Run from the repo root:
 
 - `dotnet build app/NextAITranslator.csproj -c Debug` — build.
 - `dotnet run --project app/NextAITranslator.csproj` — run (window shows). Pass
@@ -33,18 +33,27 @@ local `HttpListener` serving canned SSE/JSON (see git history), then removed.
 
 - `App.xaml.cs` — startup: single-instance mutex, `--silently`, loads config, creates the
   main window + global hotkey + tray, global exception handler.
-- `MainWindow.*` — the single translate window (input / language dropdown / clear /
-  settings / output / copy / translate). Streamed tokens are coalesced and flushed to the
-  UI in batches (`OnDelta`/`FlushPending`). Ctrl+/-/0 adjusts UI scale live.
+- `MainWindow.*` — the single translate window (input / language + tone dropdowns /
+  clear / settings + model label / output / copy / translate). Streamed tokens are
+  coalesced and flushed to the UI in batches (`OnDelta`/`FlushPending`). Two independent
+  size systems: Ctrl+/-/0 scales the whole UI (1.0–2.0), Ctrl+wheel over the text boxes
+  sets the translation content font size (12–40 px).
 - `SettingsWindow.*` — provider, API key, base URL, model (editable ComboBox auto-filled
-  from the provider's `/models` endpoint), hotkey, UI scale, auto-translate toggle. Edits
-  use working copies so Cancel never mutates the live config.
+  from the provider's `/models` endpoint), hotkey, UI scale, content font size, prompt
+  template editor (with reset-to-default), auto-translate toggle. Edits use working
+  copies so Cancel never mutates the live config; the scale/font dropdowns only persist
+  if touched, so a wheel-set custom font size isn't clobbered on Save.
 - `Core/` — `IEngine` + `OpenAICompatibleEngine` (OpenAI and all compatible providers) +
-  `GeminiEngine`; `Sse` (shared HttpClient + SSE reader); `Prompts` (translation prompt,
-  source language auto-detected by the model); `TranslateService`; `ModelService`.
+  `GeminiEngine`; `Sse` (shared HttpClient + SSE reader); `Prompts` (builds the system
+  prompt from the editable template — `{target}` is replaced with the target language,
+  source language auto-detected by the model — then appends the tone instruction;
+  non-default tones override the source's tone); `TranslateService`; `ModelService`.
 - `Interop/` — `HotKeyManager` (Win32 RegisterHotKey + `Ctrl+Alt+Z`-style parsing),
   `DarkTitleBar` (dark OS title bar via DwmSetWindowAttribute).
 - `Storage/AppConfig.cs` — plain-text JSON at `%APPDATA%\NextAITranslator\config.json`.
+  Holds per-provider settings, hotkey, prompt template (`DefaultPromptTemplate` is the
+  canonical default), tone, UI scale, content font size; `EnsureDefaults()` clamps and
+  back-fills everything on load so a hand-edited config never crashes the app.
 - `Tray/TrayManager.cs` — NotifyIcon, context menu, double-click to open.
 - `Theme.xaml` — dark theme (merged in `App.xaml`). `Assets/app.ico` — app icon.
 
@@ -63,3 +72,6 @@ their own `IEngine`. If you add one, also handle it in `TranslateService` and
   `KeyEventArgs`) — qualify with `System.Windows.*` when ambiguous.
 - Never bind `CornerRadius` (or other struct properties) to a mismatched resource type —
   it throws at XAML load (crash code `0xE0434352`).
+- User-visible feature changes should also be reflected in `README.md` and
+  `dist-fd/使用說明.txt` (the usage notes shipped beside the exe), both in Traditional
+  Chinese.
