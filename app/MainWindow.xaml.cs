@@ -26,6 +26,7 @@ namespace NextAITranslator
             ApplyScale();
             ApplyContentFont();
             PreviewKeyDown += OnPreviewKeyDown;
+            KeyDown += OnKeyDown;
             InputBox.PreviewMouseWheel += OnContentWheel;
             OutputBox.PreviewMouseWheel += OnContentWheel;
             _loaded = true;
@@ -106,12 +107,25 @@ namespace NextAITranslator
 
             switch (e.Key)
             {
+                // Preview (tunneling) so the input box can't turn Ctrl+Enter into a newline.
+                case Key.Enter:
+                    _ = TranslateAsync(); e.Handled = true; break;
                 case Key.OemPlus or Key.Add:
                     SetScale(App.Config.UiScale + 0.1); e.Handled = true; break;
                 case Key.OemMinus or Key.Subtract:
                     SetScale(App.Config.UiScale - 0.1); e.Handled = true; break;
                 case Key.D0 or Key.NumPad0:
                     SetScale(1.0); e.Handled = true; break;
+            }
+        }
+
+        private void OnKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            // Bubbling, so an open ComboBox dropdown gets to consume Esc (close itself) first.
+            if (e.Key == Key.Escape)
+            {
+                Hide();
+                e.Handled = true;
             }
         }
 
