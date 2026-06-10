@@ -37,8 +37,11 @@ namespace NextAITranslator.Storage
         public const string DefaultPromptTemplate =
             "You are a professional translation engine. Translate the user's text into {target}. " +
             "Only output the translated text — no explanations, no notes, no commentary, " +
-            "no original text, and no surrounding quotation marks. " +
-            "Preserve the original meaning and formatting (line breaks, lists) as closely as possible.";
+            "and no surrounding quotation marks. " +
+            "Preserve the original formatting (line breaks, lists). " +
+            "Match the tone and register of the source. " +
+            "Keep brand names and technical terms in their original form unless a widely accepted translation exists. " +
+            "If the text is already in {target}, output it unchanged.";
 
         /// <summary>Editable system prompt template. {target} is replaced with the target language.</summary>
         public string PromptTemplate { get; set; } = DefaultPromptTemplate;

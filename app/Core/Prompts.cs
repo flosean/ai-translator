@@ -21,10 +21,10 @@ namespace NextAITranslator.Core
         private static readonly Dictionary<string, string> ToneInstructions = new()
         {
             ["default"] = "",
-            ["professional"] = "Use a professional, precise, and polished tone.",
-            ["friendly"] = "Use a friendly, warm, and approachable tone.",
-            ["formal"] = "Use a formal and respectful tone.",
-            ["casual"] = "Use a casual, conversational, and relaxed tone.",
+            ["professional"] = "Regardless of the source's tone, use a professional, precise, and polished tone.",
+            ["friendly"] = "Regardless of the source's tone, use a friendly, warm, and approachable tone.",
+            ["formal"] = "Regardless of the source's tone, use a formal and respectful tone.",
+            ["casual"] = "Regardless of the source's tone, use a casual, conversational, and relaxed tone.",
         };
 
         public static string LangName(string code) =>
