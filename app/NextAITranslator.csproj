@@ -9,14 +9,20 @@
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>NextAITranslator</RootNamespace>
     <AssemblyName>NextAITranslator</AssemblyName>
-    <Version>1.0.0</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <!-- Version is derived from the latest git tag by MinVer (tags look like v1.0.0). -->
+    <MinVerTagPrefix>v</MinVerTagPrefix>
   </PropertyGroup>
 
   <ItemGroup>
     <Resource Include="Assets\app.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Build-time only: derives the version from git tags. Not shipped in the exe. -->
+    <PackageReference Include="MinVer" Version="6.0.0" PrivateAssets="all" />
   </ItemGroup>
 
 </Project>
