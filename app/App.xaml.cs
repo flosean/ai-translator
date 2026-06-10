@@ -48,7 +48,13 @@ namespace NextAITranslator
 
             // 2. Config. Persist once so the file exists on first run (handy for manual editing).
             Config = AppConfig.Load();
-            Config.Save();
+            try { Config.Save(); }
+            catch
+            {
+                // A locked/read-only config file must not abort startup: with
+                // OnExplicitShutdown an exception here would leave a window-less,
+                // tray-less zombie process.
+            }
 
             bool silently = false;
             foreach (var arg in e.Args)

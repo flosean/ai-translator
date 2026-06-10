@@ -67,6 +67,7 @@ namespace NextAITranslator
         private void SetContentFont(double size)
         {
             size = Math.Clamp(Math.Round(size), 12.0, 40.0);
+            if (size == App.Config.ContentFontSize) return; // e.g. wheel past the clamp edge
             App.Config.ContentFontSize = size;
             App.Config.Save();
             ApplyContentFont();
@@ -92,6 +93,7 @@ namespace NextAITranslator
         private void SetScale(double s)
         {
             s = Math.Clamp(Math.Round(s, 2), 1.0, 2.0);
+            if (s == App.Config.UiScale) return; // e.g. Ctrl+'+' past the clamp edge
             App.Config.UiScale = s;
             App.Config.Save();
             ApplyScale();
@@ -220,7 +222,7 @@ namespace NextAITranslator
 
         public async Task TranslateAsync()
         {
-            var text = InputBox.Text?.Trim() ?? "";
+            var text = InputBox.Text.Trim();
             if (text.Length == 0)
             {
                 InputBox.Focus();
@@ -228,8 +230,11 @@ namespace NextAITranslator
             }
 
             // Persist the chosen language so the choice survives restarts.
-            App.Config.LastTargetLang = SelectedLang;
-            App.Config.Save();
+            if (App.Config.LastTargetLang != SelectedLang)
+            {
+                App.Config.LastTargetLang = SelectedLang;
+                App.Config.Save();
+            }
 
             var provider = App.Config.CurrentProvider();
             if (string.IsNullOrWhiteSpace(provider.ApiKey))
@@ -248,13 +253,16 @@ namespace NextAITranslator
 
             // Coalesce streamed tokens: accumulate on the network thread and flush to
             // the UI in batches (non-blocking) so reading isn't stalled per token.
-            lock (_bufLock) { _pending.Clear(); _flushQueued = false; }
+            // The generation stamp keeps a superseded translation's late deltas out
+            // of the new translation's buffer.
+            int gen;
+            lock (_bufLock) { gen = ++_gen; _pending.Clear(); _flushQueued = false; }
 
             try
             {
                 await TranslateService.TranslateAsync(
                     App.Config, SelectedLang, text,
-                    OnDelta,
+                    delta => OnDelta(delta, gen),
                     ct);
                 FlushPending(); // ensure the tail is rendered
             }
@@ -262,13 +270,21 @@ namespace NextAITranslator
             {
                 // Superseded by a newer translation; ignore.
             }
-            catch (Exception ex)
+            catch (Exception ex) when (!ct.IsCancellationRequested)
             {
                 OutputBox.Text = "翻譯失敗：" + ex.Message;
             }
+            catch
+            {
+                // Cancellation can surface as other exception types (socket abort);
+                // a superseded translation must not overwrite the new output.
+            }
             finally
             {
-                TranslateButton.IsEnabled = true;
+                // Only the latest translation may re-enable the button; a superseded
+                // one finishing late must not re-enable it mid-stream.
+                if (gen == _gen)
+                    TranslateButton.IsEnabled = true;
             }
         }
 
@@ -277,11 +293,13 @@ namespace NextAITranslator
         private readonly object _bufLock = new();
         private readonly System.Text.StringBuilder _pending = new();
         private bool _flushQueued;
+        private int _gen;
 
-        private void OnDelta(string delta)
+        private void OnDelta(string delta, int gen)
         {
             lock (_bufLock)
             {
+                if (gen != _gen) return; // stale delta from a superseded translation
                 _pending.Append(delta);
                 if (_flushQueued) return;
                 _flushQueued = true;

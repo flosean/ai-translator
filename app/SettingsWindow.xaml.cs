@@ -132,6 +132,8 @@ namespace NextAITranslator
         private void ProviderBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (!_loaded) return;
+            // An in-flight fetch for the old provider must not fill the new one's list.
+            _modelCts?.Cancel();
             FlushProviderFields(_currentKey);
             _currentKey = SelectedProviderKey();
             LoadProviderFields(_currentKey);
@@ -165,8 +167,9 @@ namespace NextAITranslator
             };
 
             _modelCts?.Cancel();
-            _modelCts = new CancellationTokenSource();
-            var ct = _modelCts.Token;
+            var cts = new CancellationTokenSource();
+            _modelCts = cts;
+            var ct = cts.Token;
 
             RefreshButton.IsEnabled = false;
             ModelStatus.Text = "正在取得模型清單…";
@@ -174,6 +177,7 @@ namespace NextAITranslator
             try
             {
                 var models = await ModelService.ListAsync(provider, cfg, ct);
+                ct.ThrowIfCancellationRequested(); // superseded while completing
                 var current = ModelBox.Text;
                 ModelBox.Items.Clear();
                 foreach (var m in models)
@@ -184,13 +188,19 @@ namespace NextAITranslator
                     : "沒有取得到任何模型，可手動輸入模型名稱。";
             }
             catch (OperationCanceledException) { }
-            catch (Exception ex)
+            catch (Exception ex) when (!ct.IsCancellationRequested)
             {
                 ModelStatus.Text = "取得模型失敗：" + ex.Message;
             }
+            catch
+            {
+                // A cancelled fetch must not overwrite the status of a newer one.
+            }
             finally
             {
-                RefreshButton.IsEnabled = true;
+                // Only the latest fetch may re-enable the button.
+                if (_modelCts == cts)
+                    RefreshButton.IsEnabled = true;
             }
         }
 
