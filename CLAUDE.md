@@ -48,7 +48,9 @@ The exe/assembly version is **derived from git tags by MinVer** (build-time only
   clear / settings + model label / output / copy / translate). Streamed tokens are
   coalesced and flushed to the UI in batches (`OnDelta`/`FlushPending`). Two independent
   size systems: Ctrl+/-/0 scales the whole UI (1.0–2.0), Ctrl+wheel over the text boxes
-  sets the translation content font size (12–40 px).
+  sets the translation content font size (12–40 px). The middle control bar doubles as a
+  transparent GridSplitter: dragging its empty space adjusts the input/output row ratio
+  (persisted as `SplitRatio`).
 - `SettingsWindow.*` — provider, API key, base URL, model (editable ComboBox auto-filled
   from the provider's `/models` endpoint), hotkey, UI scale, content font size, prompt
   template editor (with reset-to-default), auto-translate toggle. Edits use working

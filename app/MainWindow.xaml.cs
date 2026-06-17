@@ -25,6 +25,7 @@ namespace NextAITranslator
             DarkTitleBar.Apply(this);
             ApplyScale();
             ApplyContentFont();
+            ApplySplit();
             PreviewKeyDown += OnPreviewKeyDown;
             KeyDown += OnKeyDown;
             InputBox.PreviewMouseWheel += OnContentWheel;
@@ -80,6 +81,26 @@ namespace NextAITranslator
                 return;
             SetContentFont(App.Config.ContentFontSize + (e.Delta > 0 ? 1 : -1));
             e.Handled = true;
+        }
+
+        // ----- input/output split ratio (dragging the middle control bar) -----
+
+        private void ApplySplit()
+        {
+            var r = App.Config.SplitRatio;
+            InputRow.Height = new GridLength(r, GridUnitType.Star);
+            OutputRow.Height = new GridLength(1 - r, GridUnitType.Star);
+        }
+
+        private void Splitter_DragCompleted(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
+        {
+            // After a drag both rows are still star-sized; persist their proportion.
+            var total = InputRow.Height.Value + OutputRow.Height.Value;
+            if (total <= 0) return;
+            var r = Math.Clamp(InputRow.Height.Value / total, 0.15, 0.85);
+            if (r == App.Config.SplitRatio) return;
+            App.Config.SplitRatio = r;
+            App.Config.Save();
         }
 
         // ----- UI scale -----

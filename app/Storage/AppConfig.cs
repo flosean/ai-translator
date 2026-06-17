@@ -33,6 +33,9 @@ namespace NextAITranslator.Storage
         /// <summary>Font size (px) for the input/output translation text. Clamped to [12, 40] on load.</summary>
         public double ContentFontSize { get; set; } = 16.0;
 
+        /// <summary>Input box's share of the input/output height (0.5 = equal). Clamped to [0.15, 0.85] on load.</summary>
+        public double SplitRatio { get; set; } = 0.5;
+
         /// <summary>The default system prompt. Use {target} as a placeholder for the target language name.</summary>
         public const string DefaultPromptTemplate =
             "You are a professional translation engine. Translate the user's text into {target}. " +
@@ -124,6 +127,10 @@ namespace NextAITranslator.Storage
 
             if (double.IsNaN(ContentFontSize) || ContentFontSize < 12.0) ContentFontSize = 16.0;
             if (ContentFontSize > 40.0) ContentFontSize = 40.0;
+
+            if (double.IsNaN(SplitRatio)) SplitRatio = 0.5;
+            if (SplitRatio < 0.15) SplitRatio = 0.15;
+            if (SplitRatio > 0.85) SplitRatio = 0.85;
 
             if (string.IsNullOrWhiteSpace(PromptTemplate)) PromptTemplate = DefaultPromptTemplate;
             if (string.IsNullOrWhiteSpace(Tone)) Tone = "default";
