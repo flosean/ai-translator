@@ -19,6 +19,8 @@ namespace NextAITranslator
         public MainWindow()
         {
             InitializeComponent();
+            Width = App.Config.WindowWidth;
+            Height = App.Config.WindowHeight;
             SelectLang(App.Config.LastTargetLang);
             SelectTone(App.Config.Tone);
             UpdateModelLabel();
@@ -217,6 +219,11 @@ namespace NextAITranslator
 
         protected override void OnClosing(CancelEventArgs e)
         {
+            // Save window size so the next open restores it.
+            App.Config.WindowWidth = Width;
+            App.Config.WindowHeight = Height;
+            App.Config.Save();
+
             // Closing the window just hides it; the app keeps living in the tray.
             if (!_reallyExit)
             {

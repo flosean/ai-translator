@@ -36,6 +36,7 @@ namespace NextAITranslator
 
             HotkeyBox.Text = App.Config.Hotkey;
             AutoTranslateBox.IsChecked = App.Config.AutoTranslate;
+            StartupBox.IsChecked = GetStartup();
             SelectScale(App.Config.UiScale);
             SelectFontSize(App.Config.ContentFontSize);
             PromptBox.Text = App.Config.PromptTemplate;
@@ -204,6 +205,28 @@ namespace NextAITranslator
             }
         }
 
+        // ----- startup registry -----
+
+        private const string StartupRegKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
+        private const string StartupRegName = "NextAITranslator";
+
+        private static bool GetStartup()
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(StartupRegKey);
+            return key?.GetValue(StartupRegName) != null;
+        }
+
+        private static void SetStartup(bool enable)
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(StartupRegKey, writable: true);
+            if (key == null) return;
+            if (enable)
+                key.SetValue(StartupRegName,
+                    $"\"{System.Diagnostics.Process.GetCurrentProcess().MainModule!.FileName}\" --silently");
+            else
+                key.DeleteValue(StartupRegName, throwOnMissingValue: false);
+        }
+
         // ----- save / cancel -----
 
         private void Save_Click(object sender, RoutedEventArgs e)
@@ -235,6 +258,7 @@ namespace NextAITranslator
             App.Config.Provider = _currentKey;
             App.Config.Hotkey = hotkey;
             App.Config.AutoTranslate = AutoTranslateBox.IsChecked == true;
+            SetStartup(StartupBox.IsChecked == true);
 
             var prompt = PromptBox.Text.Trim();
             App.Config.PromptTemplate = prompt.Length > 0 ? prompt : AppConfig.DefaultPromptTemplate;

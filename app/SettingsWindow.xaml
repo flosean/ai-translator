@@ -29,6 +29,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="100" />
@@ -100,12 +101,15 @@
                     <ComboBoxItem Content="32" Tag="32" />
                 </ComboBox>
 
-                <CheckBox x:Name="AutoTranslateBox" Grid.Row="8" Grid.Column="1" Margin="0,0,0,16"
+                <CheckBox x:Name="AutoTranslateBox" Grid.Row="8" Grid.Column="1" Margin="0,0,0,12"
                           Content="按熱鍵叫出視窗時，自動貼上剪貼簿並翻譯" />
 
-                <TextBlock Grid.Row="9" Grid.Column="0" Text="提示詞" VerticalAlignment="Top" Margin="0,4,0,12"
+                <CheckBox x:Name="StartupBox" Grid.Row="9" Grid.Column="1" Margin="0,0,0,16"
+                          Content="開機時自動啟動（視窗隱藏於系統匣）" />
+
+                <TextBlock Grid.Row="10" Grid.Column="0" Text="提示詞" VerticalAlignment="Top" Margin="0,4,0,12"
                            Foreground="{StaticResource SubtleBrush}" />
-                <StackPanel Grid.Row="9" Grid.Column="1" Margin="0,0,0,4">
+                <StackPanel Grid.Row="10" Grid.Column="1" Margin="0,0,0,4">
                     <TextBox x:Name="PromptBox" Height="120" AcceptsReturn="True" TextWrapping="Wrap"
                              VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top" />
                     <Grid Margin="0,6,0,0">

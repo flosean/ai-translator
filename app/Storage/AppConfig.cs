@@ -36,6 +36,10 @@ namespace NextAITranslator.Storage
         /// <summary>Input box's share of the input/output height (0.5 = equal). Clamped to [0.15, 0.85] on load.</summary>
         public double SplitRatio { get; set; } = 0.5;
 
+        /// <summary>Main window size, saved on hide so the next open restores the last size.</summary>
+        public double WindowWidth { get; set; } = 560;
+        public double WindowHeight { get; set; } = 720;
+
         /// <summary>The default system prompt. Use {target} as a placeholder for the target language name.</summary>
         public const string DefaultPromptTemplate =
             "You are a professional translation engine. Translate the user's text into {target}. " +
@@ -131,6 +135,11 @@ namespace NextAITranslator.Storage
             if (double.IsNaN(SplitRatio)) SplitRatio = 0.5;
             if (SplitRatio < 0.15) SplitRatio = 0.15;
             if (SplitRatio > 0.85) SplitRatio = 0.85;
+
+            if (double.IsNaN(WindowWidth) || WindowWidth < 300) WindowWidth = 560;
+            if (WindowWidth > 2000) WindowWidth = 2000;
+            if (double.IsNaN(WindowHeight) || WindowHeight < 300) WindowHeight = 720;
+            if (WindowHeight > 2000) WindowHeight = 2000;
 
             if (string.IsNullOrWhiteSpace(PromptTemplate)) PromptTemplate = DefaultPromptTemplate;
             if (string.IsNullOrWhiteSpace(Tone)) Tone = "default";
