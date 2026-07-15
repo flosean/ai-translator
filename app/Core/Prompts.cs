@@ -8,13 +8,7 @@ namespace NextAITranslator.Core
         private static readonly Dictionary<string, string> LangNames = new()
         {
             ["zh-Hant"] = "Traditional Chinese",
-            ["zh-Hans"] = "Simplified Chinese",
             ["en"] = "English",
-            ["ja"] = "Japanese",
-            ["ko"] = "Korean",
-            ["fr"] = "French",
-            ["de"] = "German",
-            ["es"] = "Spanish",
         };
 
         /// <summary>Tone key -> extra instruction appended to the prompt. Empty means "as natural".</summary>

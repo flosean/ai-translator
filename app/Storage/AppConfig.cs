@@ -125,6 +125,7 @@ namespace NextAITranslator.Storage
 
             if (string.IsNullOrWhiteSpace(Provider)) Provider = "gemini";
             if (string.IsNullOrWhiteSpace(Hotkey)) Hotkey = "Ctrl+Alt+Z";
+            if (LastTargetLang != "zh-Hant" && LastTargetLang != "en") LastTargetLang = "zh-Hant";
 
             if (double.IsNaN(UiScale) || UiScale < 1.0) UiScale = 1.0;
             if (UiScale > 2.0) UiScale = 2.0;

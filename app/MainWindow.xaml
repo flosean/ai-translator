@@ -45,16 +45,12 @@
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock Text="翻譯成" VerticalAlignment="Center" Margin="0,0,8,0"
                                Foreground="{StaticResource SubtleBrush}" />
-                    <ComboBox x:Name="TargetLang" Width="128" SelectedValuePath="Tag">
-                        <ComboBoxItem Content="繁體中文" Tag="zh-Hant" />
-                        <ComboBoxItem Content="简体中文" Tag="zh-Hans" />
-                        <ComboBoxItem Content="English" Tag="en" />
-                        <ComboBoxItem Content="日本語" Tag="ja" />
-                        <ComboBoxItem Content="한국어" Tag="ko" />
-                        <ComboBoxItem Content="Français" Tag="fr" />
-                        <ComboBoxItem Content="Deutsch" Tag="de" />
-                        <ComboBoxItem Content="Español" Tag="es" />
-                    </ComboBox>
+                    <StackPanel Orientation="Horizontal">
+                        <Button x:Name="TraditionalChineseButton" Content="繁體中文" Tag="zh-Hant"
+                                Padding="12,7" Margin="0,0,6,0" Click="LanguageButton_Click" />
+                        <Button x:Name="EnglishButton" Content="English" Tag="en"
+                                Padding="12,7" Click="LanguageButton_Click" />
+                    </StackPanel>
                 </StackPanel>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">

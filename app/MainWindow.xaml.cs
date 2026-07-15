@@ -15,6 +15,7 @@ namespace NextAITranslator
         private bool _reallyExit = false;
         private bool _loaded;
         private CancellationTokenSource? _cts;
+        private string _selectedLang = "zh-Hant";
 
         public MainWindow()
         {
@@ -144,7 +145,6 @@ namespace NextAITranslator
 
         private void OnKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
         {
-            // Bubbling, so an open ComboBox dropdown gets to consume Esc (close itself) first.
             if (e.Key == Key.Escape)
             {
                 Hide();
@@ -154,20 +154,20 @@ namespace NextAITranslator
 
         private void SelectLang(string code)
         {
-            foreach (ComboBoxItem item in TargetLang.Items)
-            {
-                if ((string)item.Tag == code)
-                {
-                    TargetLang.SelectedItem = item;
-                    return;
-                }
-            }
-            if (TargetLang.Items.Count > 0)
-                TargetLang.SelectedIndex = 0;
+            _selectedLang = code == "en" ? "en" : "zh-Hant";
+            TraditionalChineseButton.Style = (Style)FindResource(
+                _selectedLang == "zh-Hant" ? "PrimaryButton" : "SecondaryButton");
+            EnglishButton.Style = (Style)FindResource(
+                _selectedLang == "en" ? "PrimaryButton" : "SecondaryButton");
         }
 
-        public string SelectedLang =>
-            (TargetLang.SelectedValue as string) ?? "zh-Hant";
+        private void LanguageButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is System.Windows.Controls.Button button && button.Tag is string code)
+                SelectLang(code);
+        }
+
+        public string SelectedLang => _selectedLang;
 
         /// <summary>Bring the window to front (from tray / hotkey) and focus the input box.</summary>
         public void ShowAndFocus()

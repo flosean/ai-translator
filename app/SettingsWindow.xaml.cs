@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
@@ -33,6 +34,11 @@ namespace NextAITranslator
                     BaseUrl = kv.Value.BaseUrl,
                     Model = kv.Value.Model,
                 };
+
+            var ver = typeof(SettingsWindow).Assembly
+                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+                ?.InformationalVersion ?? "";
+            VersionLabel.Text = "版本：" + (ver.Contains('+') ? ver[..ver.IndexOf('+')] : ver);
 
             HotkeyBox.Text = App.Config.Hotkey;
             AutoTranslateBox.IsChecked = App.Config.AutoTranslate;
