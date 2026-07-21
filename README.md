@@ -46,6 +46,29 @@ dotnet publish app/NextAITranslator.csproj -c Release -r win-x64 --self-containe
 
 版本號是用 MinVer 從 git tag 帶出來的，要發版就在對應的 commit 上打一個 `vX.Y.Z` 的 tag，不用去手改檔案裡的版本。架構跟各檔案的職責寫在 [CLAUDE.md](CLAUDE.md)。
 
+## macOS（Apple Silicon）
+
+`mac/` 是原生 SwiftUI 版本，限定 macOS 14 以上與 Apple Silicon。它保留完整輸入／輸出翻譯介面、Gemini SSE 串流、選單列常駐、`⌥⌘Z` 全域快捷鍵，以及剪貼簿自動翻譯；API Key 存在 macOS Keychain。
+
+需要 Xcode 16 以上。最方便是用 Xcode 開啟 `mac/Package.swift` 後按 Run；也可在終端機執行：
+
+```zsh
+cd mac
+swift run
+```
+
+首次啟動後從選單列的「設定」填入 Gemini API Key，按「儲存 API Key」，模型使用 `gemini-3.5-flash` 或按「讀取模型」後選擇可用模型。模型與其他偏好會自動保存；API Key 則只保存在 macOS Keychain。舊版的 `gemini-2.0-flash` 已被 Google 關閉，App 會自動改用 `gemini-3.5-flash`。
+
+勾選「叫出時自動翻譯剪貼簿」後，按 `⌥⌘Z` 就會讀取剪貼簿並開始翻譯；快捷鍵的字母可在設定中改成另一個單一英文字母。
+
+要建立可直接使用的 `.app`，在專案根目錄執行：
+
+```zsh
+mac/package-app.sh
+```
+
+成品在 `dist-mac/NextAI 翻譯.app`，拖進「應用程式」資料夾即可使用。
+
 ## 授權
 
 [AGPL-3.0](LICENSE)
