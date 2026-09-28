@@ -1,9 +1,11 @@
 import AppKit
 import Security
+import ServiceManagement
 import SwiftUI
 
 @main
 struct NextAITranslatorMacApp: App {
+    @Environment(\.openWindow) private var openWindow
     @StateObject private var settings: AppSettings
     @StateObject private var translator: TranslatorViewModel
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
@@ -15,9 +17,12 @@ struct NextAITranslatorMacApp: App {
     }
 
     var body: some Scene {
-        WindowGroup("NextAI 翻譯") {
+        Window("NextAI 翻譯", id: "translator") {
             TranslatorView(settings: settings, translator: translator)
-                .onReceive(NotificationCenter.default.publisher(for: .showTranslator)) { _ in showTranslator() }
+                .onAppear {
+                    appDelegate.showTranslator = showTranslator
+                    HotkeyManager.shared.register(key: settings.hotkeyKey)
+                }
         }
         .defaultSize(width: 680, height: 740)
         .windowResizability(.contentMinSize)
@@ -37,7 +42,7 @@ struct NextAITranslatorMacApp: App {
 
     private func showTranslator() {
         NSApp.activate(ignoringOtherApps: true)
-        NSApp.windows.first(where: { $0.canBecomeMain })?.makeKeyAndOrderFront(nil)
+        openWindow(id: "translator")
         if settings.autoTranslateClipboard, let text = NSPasteboard.general.string(forType: .string), !text.isEmpty {
             translator.source = text
             translator.translate()
@@ -45,9 +50,21 @@ struct NextAITranslatorMacApp: App {
     }
 }
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    var showTranslator: (() -> Void)?
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showTranslator?()
+        return true
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
-        HotkeyManager.shared.register(key: UserDefaults.standard.string(forKey: "hotkeyKey") ?? "z")
+        NotificationCenter.default.addObserver(forName: .showTranslator, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.showTranslator?() }
+        }
         NotificationCenter.default.addObserver(forName: .hotkeyChanged, object: nil, queue: .main) { notification in
             HotkeyManager.shared.register(key: notification.object as? String ?? "z")
         }
@@ -68,34 +85,51 @@ final class AppSettings: ObservableObject {
     @Published var hotkeyKey: String { didSet { save("hotkeyKey", hotkeyKey); NotificationCenter.default.post(name: .hotkeyChanged, object: hotkeyKey) } }
     @Published var models: [String] = []
     @Published var modelError = ""
+    private let defaults: UserDefaults
+    private var modelTask: Task<Void, Never>?
 
-    init(defaults: UserDefaults = .standard) {
-        apiKey = KeychainStore.load()
+    init(defaults: UserDefaults = .standard, apiKey: String? = nil) {
+        self.defaults = defaults
+        self.apiKey = apiKey ?? KeychainStore.load()
         let storedModel = defaults.string(forKey: "model")
         model = storedModel == "gemini-2.0-flash" ? "gemini-3.5-flash" : (storedModel ?? "gemini-3.5-flash")
         target = defaults.string(forKey: "target") == "en" ? "en" : "zh-Hant"
         tone = Tone(rawValue: defaults.string(forKey: "tone") ?? "default") ?? .default
         autoTranslateClipboard = defaults.object(forKey: "autoTranslateClipboard") as? Bool ?? false
-        contentFontSize = min(max(defaults.object(forKey: "contentFontSize") as? Double ?? 16, 12), 40)
+        let fontSize = defaults.object(forKey: "contentFontSize") as? Double ?? 16
+        contentFontSize = fontSize.isFinite ? min(max(fontSize, 12), 40) : 16
         promptTemplate = defaults.string(forKey: "promptTemplate") ?? Self.defaultPrompt
-        hotkeyKey = defaults.string(forKey: "hotkeyKey") ?? "z"
+        let storedKey = defaults.string(forKey: "hotkeyKey")?.lowercased() ?? "z"
+        hotkeyKey = storedKey.count == 1 && storedKey.allSatisfy({ $0.isASCII && $0.isLetter }) ? storedKey : "z"
     }
 
-    func saveAPIKey() throws { try KeychainStore.save(apiKey) }
+    func saveAPIKey() throws {
+        apiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        try KeychainStore.save(apiKey)
+    }
     func loadModels() {
-        Task {
+        modelTask?.cancel()
+        let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        models = []
+        modelError = ""
+        modelTask = Task {
             do {
-                models = try await GeminiService.listModels(apiKey: apiKey)
+                let result = try await GeminiService.listModels(apiKey: key)
+                guard !Task.isCancelled, key == apiKey.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
+                models = result
                 if !model.isEmpty && !models.contains(model) { models.insert(model, at: 0) }
-                modelError = models.isEmpty ? "沒有可用的 Gemini 模型。" : ""
-            } catch { modelError = error.localizedDescription }
+                modelError = result.isEmpty ? "沒有可用的 Gemini 模型。" : ""
+            } catch {
+                guard !Task.isCancelled, key == apiKey.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
+                modelError = error.localizedDescription
+            }
         }
     }
 
-    private func save(_ key: String, _ value: Any) { UserDefaults.standard.set(value, forKey: key) }
+    private func save(_ key: String, _ value: Any) { defaults.set(value, forKey: key) }
 }
 
-enum Tone: String, CaseIterable, Identifiable {
+enum Tone: String, CaseIterable, Identifiable, Sendable {
     case `default`, professional, friendly, formal, casual
     var id: String { rawValue }
     var title: String {
@@ -114,40 +148,66 @@ enum Tone: String, CaseIterable, Identifiable {
 
 @MainActor
 final class TranslatorViewModel: ObservableObject {
+    typealias Translation = @Sendable (String, String, Tone, String, String, String,
+        @escaping @MainActor @Sendable (String) -> Void) async throws -> Void
     @Published var source = ""
     @Published var output = ""
     @Published var error = ""
     @Published var isTranslating = false
     private let settings: AppSettings
     private var task: Task<Void, Never>?
+    private var generation = 0
+    private let translateText: Translation
 
-    init(settings: AppSettings) { self.settings = settings }
+    init(settings: AppSettings, translate: @escaping Translation = GeminiService.translate) {
+        self.settings = settings
+        translateText = translate
+    }
     deinit { task?.cancel() }
 
     func translate() {
         let text = source.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        guard !settings.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        cancelTranslation()
+        let apiKey = settings.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !apiKey.isEmpty else {
             error = "請先在設定中儲存 Gemini API Key。"
             return
         }
-        task?.cancel()
         output = ""
         error = ""
         isTranslating = true
-        let settings = settings
+        let generation = generation
+        let target = settings.target == "zh-Hant" ? "Traditional Chinese" : "English"
+        let tone = settings.tone
+        let model = settings.model.trimmingCharacters(in: .whitespacesAndNewlines)
+        let template = settings.promptTemplate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? AppSettings.defaultPrompt : settings.promptTemplate
+        let translateText = translateText
         task = Task { [weak self] in
-            defer { self?.isTranslating = false }
+            defer {
+                if self?.generation == generation { self?.isTranslating = false }
+            }
             do {
-                try await GeminiService.translate(text: text, target: settings.target == "zh-Hant" ? "Traditional Chinese" : "English", tone: settings.tone, model: settings.model, apiKey: settings.apiKey, promptTemplate: settings.promptTemplate) { [weak self] delta in
-                    Task { @MainActor in self?.output += delta }
+                try await translateText(text, target, tone, model, apiKey, template) { [weak self] delta in
+                    guard self?.generation == generation else { return }
+                    self?.output += delta
                 }
-            } catch is CancellationError {
-            } catch { self?.error = error.localizedDescription }
+            } catch {
+                guard !Task.isCancelled, self?.generation == generation else { return }
+                self?.error = error.localizedDescription
+            }
         }
     }
 
-    func clear() { task?.cancel(); source = ""; output = ""; error = "" }
+    private func cancelTranslation() {
+        generation += 1
+        task?.cancel()
+        task = nil
+        isTranslating = false
+    }
+
+    func clear() { cancelTranslation(); source = ""; output = ""; error = "" }
     func copy() { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(output, forType: .string) }
 }
 
@@ -162,35 +222,41 @@ struct TranslatorView: View {
                 Spacer()
                 SettingsLink { Image(systemName: "gearshape") }
             }
-            InputTextView(
-                text: $translator.source,
-                fontSize: settings.contentFontSize,
-                placeholder: "輸入或貼上想翻譯的內容"
-            )
-                .padding(6)
-                .frame(minHeight: 180, maxHeight: .infinity)
+            VSplitView {
+                VStack(spacing: 12) {
+                    InputTextView(
+                        text: $translator.source,
+                        fontSize: settings.contentFontSize,
+                        placeholder: "輸入或貼上想翻譯的內容"
+                    )
+                    .padding(6)
+                    .frame(minHeight: 80, maxHeight: .infinity)
+                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+                    .accessibilityLabel("原文")
+
+                    HStack {
+                        Button("繁體中文") { settings.target = "zh-Hant" }.buttonStyle(.bordered).tint(settings.target == "zh-Hant" ? .accentColor : .gray)
+                        Button("English") { settings.target = "en" }.buttonStyle(.bordered).tint(settings.target == "en" ? .accentColor : .gray)
+                        Picker("語調", selection: $settings.tone) { ForEach(Tone.allCases) { Text($0.title).tag($0) } }.frame(width: 130)
+                        Spacer()
+                        Button("清除", action: translator.clear)
+                        Button(translator.isTranslating ? "翻譯中…" : "翻譯") { translator.translate() }
+                            .keyboardShortcut(.return, modifiers: .command).disabled(translator.source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || translator.isTranslating)
+                    }
+                }
+                .padding(.bottom, 6)
+
+                ScrollView {
+                    Text(translator.output.isEmpty ? "翻譯結果會顯示在這裡" : translator.output)
+                        .font(.system(size: settings.contentFontSize))
+                        .foregroundStyle(translator.output.isEmpty ? .secondary : .primary)
+                        .frame(maxWidth: .infinity, alignment: .topLeading).textSelection(.enabled).padding(12)
+                }
+                .frame(minHeight: 80, maxHeight: .infinity)
                 .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
-                .accessibilityLabel("原文")
-
-            HStack {
-                Button("繁體中文") { settings.target = "zh-Hant" }.buttonStyle(.bordered).tint(settings.target == "zh-Hant" ? .accentColor : .gray)
-                Button("English") { settings.target = "en" }.buttonStyle(.bordered).tint(settings.target == "en" ? .accentColor : .gray)
-                Picker("語調", selection: $settings.tone) { ForEach(Tone.allCases) { Text($0.title).tag($0) } }.frame(width: 130)
-                Spacer()
-                Button("清除", action: translator.clear)
-                Button(translator.isTranslating ? "翻譯中…" : "翻譯") { translator.translate() }
-                    .keyboardShortcut(.return, modifiers: .command).disabled(translator.source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || translator.isTranslating)
+                .accessibilityLabel("翻譯結果")
+                .padding(.top, 6)
             }
-
-            ScrollView {
-                Text(translator.output.isEmpty ? "翻譯結果會顯示在這裡" : translator.output)
-                    .font(.system(size: settings.contentFontSize))
-                    .foregroundStyle(translator.output.isEmpty ? .secondary : .primary)
-                    .frame(maxWidth: .infinity, alignment: .topLeading).textSelection(.enabled).padding(12)
-            }
-            .frame(minHeight: 180, maxHeight: .infinity)
-            .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
-            .accessibilityLabel("翻譯結果")
             HStack {
                 if translator.isTranslating {
                     ProgressView().controlSize(.small)
@@ -240,6 +306,7 @@ struct InputTextView: NSViewRepresentable {
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        context.coordinator.parent = self
         guard let textView = scrollView.documentView as? PlaceholderTextView else { return }
         if textView.string != text { textView.string = text }
         textView.font = .systemFont(ofSize: fontSize)
@@ -279,7 +346,10 @@ final class PlaceholderTextView: NSTextView {
 
 struct SettingsView: View {
     @ObservedObject var settings: AppSettings
+    @ObservedObject private var hotkey = HotkeyManager.shared
     @State private var saveMessage = ""
+    @State private var loginItemStatus = SMAppService.mainApp.status
+    @State private var loginItemError = ""
 
     var body: some View {
         Form {
@@ -300,7 +370,18 @@ struct SettingsView: View {
                 if !settings.modelError.isEmpty { Text(settings.modelError).foregroundStyle(.red) }
             }
             Section("操作") {
-                TextField("全域快捷鍵（⌥⌘ + 單一字母）", text: Binding(get: { settings.hotkeyKey }, set: { settings.hotkeyKey = String($0.lowercased().filter(\.isLetter).prefix(1)) }))
+                Toggle("登入時自動啟動", isOn: Binding(
+                    get: { loginItemStatus == .enabled || loginItemStatus == .requiresApproval },
+                    set: setLaunchAtLogin
+                ))
+                if loginItemStatus == .requiresApproval {
+                    Text("尚未啟用自動啟動，請在系統設定的登入項目中允許 NextAI 翻譯。")
+                        .foregroundStyle(.secondary)
+                    Button("開啟登入項目設定") { SMAppService.openSystemSettingsLoginItems() }
+                }
+                if !loginItemError.isEmpty { Text(loginItemError).foregroundStyle(.red) }
+                TextField("全域快捷鍵（⌥⌘ + 單一字母）", text: Binding(get: { settings.hotkeyKey }, set: { settings.hotkeyKey = String($0.lowercased().filter { $0.isASCII && $0.isLetter }.prefix(1)) }))
+                if !hotkey.error.isEmpty { Text(hotkey.error).foregroundStyle(.red) }
                 Toggle("叫出時自動翻譯剪貼簿", isOn: $settings.autoTranslateClipboard)
                 HStack { Text("內容字級"); Slider(value: $settings.contentFontSize, in: 12...40, step: 1); Text("\(Int(settings.contentFontSize))") }
             }
@@ -311,6 +392,24 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped).padding().frame(minWidth: 560, idealWidth: 620, minHeight: 620)
+        .onAppear { loginItemStatus = SMAppService.mainApp.status }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            loginItemStatus = SMAppService.mainApp.status
+        }
+    }
+
+    private func setLaunchAtLogin(_ enabled: Bool) {
+        loginItemError = ""
+        do {
+            if enabled {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+        } catch {
+            loginItemError = "無法變更自動啟動設定：\(error.localizedDescription)"
+        }
+        loginItemStatus = SMAppService.mainApp.status
     }
 }
 
@@ -327,11 +426,21 @@ enum KeychainStore {
 
     static func save(_ value: String) throws {
         let query: [CFString: Any] = [kSecClass: kSecClassGenericPassword, kSecAttrService: service, kSecAttrAccount: account]
-        SecItemDelete(query as CFDictionary)
-        guard !value.isEmpty else { return }
-        var item = query
-        item[kSecValueData] = Data(value.utf8)
-        let status = SecItemAdd(item as CFDictionary, nil)
-        guard status == errSecSuccess else { throw GeminiError.message("無法儲存 API Key（\(status)）。") }
+        let status: OSStatus
+        if value.isEmpty {
+            status = SecItemDelete(query as CFDictionary)
+            guard status == errSecSuccess || status == errSecItemNotFound else {
+                throw GeminiError.message("無法刪除 API Key（\(status)）。")
+            }
+        } else {
+            let attributes: [CFString: Any] = [kSecValueData: Data(value.utf8)]
+            let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+            if updateStatus == errSecItemNotFound {
+                status = SecItemAdd(query.merging(attributes) { _, new in new } as CFDictionary, nil)
+            } else {
+                status = updateStatus
+            }
+            guard status == errSecSuccess else { throw GeminiError.message("無法儲存 API Key（\(status)）。") }
+        }
     }
 }

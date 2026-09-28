@@ -110,7 +110,8 @@ namespace NextAITranslator.Interop
                     case "meta":
                         mods |= Mods.Win; break;
                     default:
-                        keyToken = t; break; // last non-modifier token wins
+                        if (keyToken != null) return false;
+                        keyToken = t; break;
                 }
             }
 
@@ -121,6 +122,9 @@ namespace NextAITranslator.Interop
                 keyToken = "D" + keyToken;
 
             if (!Enum.TryParse<Keys>(keyToken, ignoreCase: true, out var key))
+                return false;
+            if (!Enum.IsDefined(key) || key is Keys.ControlKey or Keys.ShiftKey or Keys.Menu
+                or Keys.LWin or Keys.RWin || (uint)key > 0xFE)
                 return false;
 
             modifiers = (uint)mods;

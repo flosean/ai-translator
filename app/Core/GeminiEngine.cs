@@ -31,27 +31,36 @@ namespace NextAITranslator.Core
                 Content = new StringContent(json, Encoding.UTF8, "application/json"),
             };
 
+            bool receivedText = false;
             await Sse.StreamAsync(req, payload =>
             {
                 try
                 {
                     using var doc = JsonDocument.Parse(payload);
-                    if (!doc.RootElement.TryGetProperty("candidates", out var candidates) ||
-                        candidates.GetArrayLength() == 0)
+                    Sse.ThrowIfApiError(doc.RootElement);
+                    if (doc.RootElement.ValueKind != JsonValueKind.Object ||
+                        !doc.RootElement.TryGetProperty("candidates", out var candidates) ||
+                        candidates.ValueKind != JsonValueKind.Array || candidates.GetArrayLength() == 0)
                         return;
 
-                    if (!candidates[0].TryGetProperty("content", out var content) ||
-                        !content.TryGetProperty("parts", out var parts))
+                    if (candidates[0].ValueKind != JsonValueKind.Object ||
+                        !candidates[0].TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.Object ||
+                        !content.TryGetProperty("parts", out var parts) || parts.ValueKind != JsonValueKind.Array)
                         return;
 
                     foreach (var part in parts.EnumerateArray())
                     {
+                        if (part.ValueKind != JsonValueKind.Object ||
+                            (part.TryGetProperty("thought", out var thought) && thought.ValueKind == JsonValueKind.True)) continue;
                         if (part.TryGetProperty("text", out var text) &&
                             text.ValueKind == JsonValueKind.String)
                         {
                             var s = text.GetString();
                             if (!string.IsNullOrEmpty(s))
+                            {
+                                receivedText = true;
                                 onDelta(s);
+                            }
                         }
                     }
                 }
@@ -60,6 +69,7 @@ namespace NextAITranslator.Core
                     // Ignore malformed fragments.
                 }
             }, ct).ConfigureAwait(false);
+            if (!receivedText) throw new HttpRequestException("Gemini 沒有回傳可顯示的翻譯結果。");
         }
     }
 }

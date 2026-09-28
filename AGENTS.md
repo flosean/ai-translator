@@ -4,11 +4,11 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 ## What this is
 
-**NextAI 翻譯** — a minimal, fast, native Windows translation app. Open a window, paste
+**NextAI 翻譯** — minimal native Windows and macOS translation apps. Open a window, paste
 text, pick a target language, translate. That is the whole scope, on purpose.
 
 It is a from-scratch **.NET 8 WPF** rewrite that replaced an earlier Tauri/WebView2 +
-React app (deleted). The whole project lives in `app/`. There is no Node, no webview,
+React app (deleted). The Windows project lives in `app/`. There is no Node, no webview,
 and essentially no NuGet dependencies — only the .NET BCL + WPF.
 
 ## Commands
@@ -26,8 +26,26 @@ Run from the repo root:
   ```
   The deliverable is `dist-fd/NextAITranslator.exe` (~0.2 MB).
 
-There is no test project; verification is done with throwaway console harnesses against a
+Windows has no test project; verification is done with throwaway console harnesses against a
 local `HttpListener` serving canned SSE/JSON (see git history), then removed.
+
+## macOS (`mac/`)
+
+- Independent SwiftUI/AppKit app, Apple Silicon, macOS 14+, Swift 6; no third-party packages.
+- `swift test --package-path mac` runs XCTest regression checks; `mac/package-app.sh`
+  builds and ad-hoc signs `dist-mac/NextAI 翻譯.app`. Existing bundles need no Xcode to run.
+- `NextAITranslatorMacApp.swift`: named translation window, menu bar, settings, Keychain,
+  isolated UserDefaults store, cancellable translation view model, native `VSplitView`,
+  and `SMAppService.mainApp` login-item control. Settings reflect actual system status.
+- `GeminiService.swift`: Gemini-only networking and SSE decoding; UI callbacks are awaited
+  on the main actor. Generation checks prevent cancelled requests from updating new output.
+- `HotkeyManager.swift`: Carbon registration of Option+Command+letter, with visible errors.
+- Tests must inject an empty/test API key and a temporary UserDefaults suite. Never access
+  the user's Keychain or paid API just to run tests.
+- macOS preferences and credentials are independent of Windows config. Its bundle version
+  is in `mac/Info.plist`; the MinVer rules below apply to Windows.
+- `dist-mac/` and Windows `.exe` files are ignored by Git. Pushing source does not ship binaries.
+- Document macOS changes in `mac/README.md` as well as the root README and shipped usage notes.
 
 ## Versioning
 

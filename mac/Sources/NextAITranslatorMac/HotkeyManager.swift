@@ -1,10 +1,12 @@
 import Carbon
+import Combine
 import Foundation
 
-final class HotkeyManager: @unchecked Sendable {
+final class HotkeyManager: ObservableObject, @unchecked Sendable {
     static let shared = HotkeyManager()
     private var hotkey: EventHotKeyRef?
     private var handler: EventHandlerRef?
+    @Published private(set) var error = ""
 
     private init() {
         var event = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
@@ -12,12 +14,19 @@ final class HotkeyManager: @unchecked Sendable {
     }
 
     func register(key: String) {
+        error = ""
         if let hotkey { UnregisterEventHotKey(hotkey) }
         hotkey = nil
-        guard let keyCode = Self.keyCode(for: key) else { return }
+        guard let keyCode = Self.keyCode(for: key), handler != nil else {
+            error = "快捷鍵未啟用，請輸入一個英文字母。"
+            return
+        }
         var ref: EventHotKeyRef?
         let id = EventHotKeyID(signature: OSType(0x4E415449), id: 1) // NATI
-        guard RegisterEventHotKey(keyCode, UInt32(cmdKey | optionKey), id, GetApplicationEventTarget(), 0, &ref) == noErr else { return }
+        guard RegisterEventHotKey(keyCode, UInt32(cmdKey | optionKey), id, GetApplicationEventTarget(), 0, &ref) == noErr else {
+            error = "快捷鍵註冊失敗，可能已被其他程式使用，請改用其他字母。"
+            return
+        }
         hotkey = ref
     }
 
@@ -27,6 +36,7 @@ final class HotkeyManager: @unchecked Sendable {
     }
 
     private static func keyCode(for key: String) -> UInt32? {
+        guard key.count == 1 else { return nil }
         let codes: [Character: UInt32] = [
             "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6, "x": 7,
             "c": 8, "v": 9, "b": 11, "q": 12, "w": 13, "e": 14, "r": 15, "y": 16,

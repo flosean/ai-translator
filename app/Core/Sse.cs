@@ -1,6 +1,8 @@
 using System;
 using System.IO;
 using System.Net.Http;
+using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -33,17 +35,46 @@ namespace NextAITranslator.Core
             await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
             using var reader = new StreamReader(stream);
 
+            var pending = new StringBuilder();
+            void Flush()
+            {
+                if (pending.Length == 0) return;
+                onData(pending.ToString());
+                pending.Clear();
+            }
+
             string? line;
             while ((line = await reader.ReadLineAsync(ct).ConfigureAwait(false)) != null)
             {
-                if (line.Length == 0) continue;
+                if (line.Length == 0) { Flush(); continue; }
                 if (line.StartsWith("data:", StringComparison.Ordinal))
                 {
-                    var payload = line.Substring(5).Trim();
-                    if (payload.Length > 0)
-                        onData(payload);
+                    // Accept complete JSON events even if a provider omits blank separators.
+                    if (IsCompletePayload(pending.ToString())) Flush();
+                    var payload = line.Substring(5);
+                    if (payload.StartsWith(' ')) payload = payload.Substring(1);
+                    if (pending.Length > 0) pending.Append('\n');
+                    pending.Append(payload);
                 }
             }
+            ct.ThrowIfCancellationRequested();
+            Flush();
+        }
+
+        private static bool IsCompletePayload(string payload)
+        {
+            if (payload == "[DONE]") return true;
+            if (payload.Length == 0) return false;
+            try { using var document = JsonDocument.Parse(payload); return true; }
+            catch (JsonException) { return false; }
+        }
+
+        public static void ThrowIfApiError(JsonElement root)
+        {
+            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("error", out var error)) return;
+            var message = error.ValueKind == JsonValueKind.Object && error.TryGetProperty("message", out var detail)
+                ? detail.ToString() : error.ToString();
+            throw new HttpRequestException("API 錯誤：" + Truncate(message, 500));
         }
 
         private static string Truncate(string s, int max) =>

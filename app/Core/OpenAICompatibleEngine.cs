@@ -37,6 +37,7 @@ namespace NextAITranslator.Core
             };
             req.Headers.TryAddWithoutValidation("Authorization", "Bearer " + cfg.ApiKey);
 
+            bool receivedText = false;
             await Sse.StreamAsync(req, payload =>
             {
                 if (payload == "[DONE]") return;
@@ -44,16 +45,22 @@ namespace NextAITranslator.Core
                 try
                 {
                     using var doc = JsonDocument.Parse(payload);
-                    var choices = doc.RootElement.GetProperty("choices");
-                    if (choices.GetArrayLength() == 0) return;
+                    Sse.ThrowIfApiError(doc.RootElement);
+                    if (doc.RootElement.ValueKind != JsonValueKind.Object ||
+                        !doc.RootElement.TryGetProperty("choices", out var choices) ||
+                        choices.ValueKind != JsonValueKind.Array || choices.GetArrayLength() == 0) return;
 
-                    var delta = choices[0].GetProperty("delta");
+                    if (choices[0].ValueKind != JsonValueKind.Object ||
+                        !choices[0].TryGetProperty("delta", out var delta) || delta.ValueKind != JsonValueKind.Object) return;
                     if (delta.TryGetProperty("content", out var content) &&
                         content.ValueKind == JsonValueKind.String)
                     {
                         var s = content.GetString();
                         if (!string.IsNullOrEmpty(s))
+                        {
+                            receivedText = true;
                             onDelta(s);
+                        }
                     }
                 }
                 catch (JsonException)
@@ -61,6 +68,7 @@ namespace NextAITranslator.Core
                     // Ignore keep-alive / malformed fragments.
                 }
             }, ct).ConfigureAwait(false);
+            if (!receivedText) throw new HttpRequestException("模型沒有回傳可顯示的翻譯結果。");
         }
     }
 }

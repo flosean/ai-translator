@@ -51,6 +51,7 @@ namespace NextAITranslator
             _currentKey = SelectedProviderKey();
             LoadProviderFields(_currentKey);
             _loaded = true;
+            Closed += (_, _) => _modelCts?.Cancel();
         }
 
         private string SelectedProviderKey() =>
@@ -224,8 +225,7 @@ namespace NextAITranslator
 
         private static void SetStartup(bool enable)
         {
-            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(StartupRegKey, writable: true);
-            if (key == null) return;
+            using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(StartupRegKey);
             if (enable)
                 key.SetValue(StartupRegName,
                     $"\"{System.Diagnostics.Process.GetCurrentProcess().MainModule!.FileName}\" --silently");

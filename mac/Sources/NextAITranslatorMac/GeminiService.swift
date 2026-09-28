@@ -8,7 +8,7 @@ enum GeminiService {
         model: String,
         apiKey: String,
         promptTemplate: String,
-        onDelta: @escaping @Sendable (String) -> Void
+        onDelta: @escaping @MainActor @Sendable (String) -> Void
     ) async throws {
         guard !apiKey.isEmpty else { throw GeminiError.message("請先在設定中填入 Gemini API Key。") }
 
@@ -38,13 +38,19 @@ enum GeminiService {
         var receivedText = false
         for try await line in bytes.lines {
             for payload in parser.consume(line) {
-                if let message = errorMessage(from: payload) { throw GeminiError.message(message) }
-                receivedText = emitText(from: payload, onDelta: onDelta) || receivedText
+                for delta in try textDeltas(from: payload) {
+                    try Task.checkCancellation()
+                    await onDelta(delta)
+                    receivedText = true
+                }
             }
         }
         for payload in parser.finish() {
-            if let message = errorMessage(from: payload) { throw GeminiError.message(message) }
-            receivedText = emitText(from: payload, onDelta: onDelta) || receivedText
+            for delta in try textDeltas(from: payload) {
+                try Task.checkCancellation()
+                await onDelta(delta)
+                receivedText = true
+            }
         }
         guard receivedText else { throw GeminiError.message("Gemini 沒有回傳可顯示的翻譯結果。") }
     }
@@ -64,7 +70,10 @@ enum GeminiService {
     }
 
     private static func endpoint(model: String, apiKey: String, suffix: String, path: String? = nil) throws -> URL {
-        let resource = path ?? "models/\(model)"
+        let model = model.hasPrefix("models/") ? String(model.dropFirst(7)) : model
+        guard path != nil || !model.isEmpty else { throw GeminiError.message("請先選擇 Gemini 模型。") }
+        let escapedModel = model.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(CharacterSet(charactersIn: "-_."))) ?? ""
+        let resource = path ?? "models/\(escapedModel)"
         guard var components = URLComponents(string: "https://generativelanguage.googleapis.com/v1beta/\(resource)\(suffix)") else {
             throw GeminiError.message("Gemini 網址無效。")
         }
@@ -73,24 +82,16 @@ enum GeminiService {
         return url
     }
 
-    private static func emitText(from payload: String, onDelta: @escaping @Sendable (String) -> Void) -> Bool {
+    static func textDeltas(from payload: String) throws -> [String] {
         guard let data = payload.data(using: .utf8),
-              let response = try? JSONDecoder().decode(GenerateResponse.self, from: data) else { return false }
-        var emitted = false
-        for candidate in response.candidates ?? [] {
-            for part in candidate.content?.parts ?? [] where !part.text.isEmpty {
-                onDelta(part.text)
-                emitted = true
-            }
+              let response = try? JSONDecoder().decode(GenerateResponse.self, from: data) else { return [] }
+        if let error = response.error {
+            throw GeminiError.message("Gemini API 錯誤：\(error.message)")
         }
-        return emitted
-    }
-
-    private static func errorMessage(from payload: String) -> String? {
-        guard let data = payload.data(using: .utf8),
-              let response = try? JSONDecoder().decode(ErrorResponse.self, from: data),
-              let error = response.error else { return nil }
-        return "Gemini API 錯誤：\(error.message)"
+        return (response.candidates?.first?.content?.parts ?? []).compactMap { part in
+            guard part.thought != true, let text = part.text, !text.isEmpty else { return nil }
+            return text
+        }
     }
 }
 
@@ -100,8 +101,15 @@ struct SSEParser: Sendable {
     mutating func consume(_ line: String) -> [String] {
         if line.isEmpty { return flush() }
         if line.hasPrefix("data:") {
-            let previous = flush()
-            dataLines.append(line.dropFirst(5).trimmingCharacters(in: .whitespaces))
+            // Also accept complete JSON events from providers that omit blank separators.
+            let buffered = dataLines.joined(separator: "\n")
+            let complete = buffered == "[DONE]" || buffered.data(using: .utf8).flatMap {
+                try? JSONSerialization.jsonObject(with: $0)
+            } != nil
+            let previous = complete ? flush() : []
+            var value = String(line.dropFirst(5))
+            if value.hasPrefix(" ") { value.removeFirst() }
+            dataLines.append(value)
             return previous
         }
         return []
@@ -134,10 +142,16 @@ private struct Content: Codable {
 
 private struct SystemInstruction: Encodable { let parts: [Part] }
 private struct Part: Codable { let text: String }
-private struct GenerateResponse: Decodable { let candidates: [Candidate]? }
+private struct GenerateResponse: Decodable {
+    let candidates: [Candidate]?
+    let error: APIError?
+}
 private struct Candidate: Decodable { let content: ResponseContent? }
-private struct ResponseContent: Decodable { let parts: [Part] }
-private struct ErrorResponse: Decodable { let error: APIError? }
+private struct ResponseContent: Decodable { let parts: [ResponsePart]? }
+private struct ResponsePart: Decodable {
+    let text: String?
+    let thought: Bool?
+}
 private struct APIError: Decodable { let message: String }
 private struct ModelList: Decodable { let models: [GeminiModel] }
 private struct GeminiModel: Decodable {
