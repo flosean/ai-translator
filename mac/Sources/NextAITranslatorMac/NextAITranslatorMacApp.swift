@@ -217,11 +217,6 @@ struct TranslatorView: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            HStack {
-                Text("NextAI 翻譯").font(.title2.bold())
-                Spacer()
-                SettingsLink { Image(systemName: "gearshape") }
-            }
             VSplitView {
                 VStack(spacing: 12) {
                     InputTextView(
@@ -258,6 +253,9 @@ struct TranslatorView: View {
                 .padding(.top, 6)
             }
             HStack {
+                SettingsLink { Image(systemName: "gearshape") }
+                    .help("設定")
+                    .accessibilityLabel("設定")
                 if translator.isTranslating {
                     ProgressView().controlSize(.small)
                     Text("正在翻譯…").foregroundStyle(.secondary)
