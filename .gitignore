@@ -12,3 +12,8 @@
 *.log
 *.exe
 .DS_Store
+
+# Swift Package Manager
+.build/
+.swiftpm/
+dist-mac/

@@ -101,12 +101,29 @@ namespace NextAITranslator.Storage
         {
             Directory.CreateDirectory(Dir);
             var json = JsonSerializer.Serialize(this, JsonOpts);
-            File.WriteAllText(ConfigPath, json);
+            var temporaryPath = ConfigPath + "." + System.Guid.NewGuid() + ".tmp";
+            try
+            {
+                File.WriteAllText(temporaryPath, json);
+                File.Move(temporaryPath, ConfigPath, overwrite: true);
+            }
+            finally
+            {
+                if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+            }
         }
 
         /// <summary>Make sure the providers we ship always have an entry with sane defaults.</summary>
         public void EnsureDefaults()
         {
+            Providers ??= new();
+            foreach (var key in new List<string>(Providers.Keys))
+            {
+                var entry = Providers[key] ??= new ProviderConfig();
+                entry.ApiKey ??= "";
+                entry.BaseUrl ??= "";
+                entry.Model ??= "";
+            }
             if (!Providers.TryGetValue("openai", out var openai))
             {
                 openai = new ProviderConfig();
@@ -121,9 +138,10 @@ namespace NextAITranslator.Storage
                 Providers["gemini"] = gemini;
             }
             if (string.IsNullOrWhiteSpace(gemini.BaseUrl)) gemini.BaseUrl = "https://generativelanguage.googleapis.com/v1beta";
-            if (string.IsNullOrWhiteSpace(gemini.Model)) gemini.Model = "gemini-2.0-flash";
+            if (string.IsNullOrWhiteSpace(gemini.Model) || gemini.Model == "gemini-2.0-flash")
+                gemini.Model = "gemini-3.5-flash";
 
-            if (string.IsNullOrWhiteSpace(Provider)) Provider = "gemini";
+            if (string.IsNullOrWhiteSpace(Provider) || !Providers.ContainsKey(Provider)) Provider = "gemini";
             if (string.IsNullOrWhiteSpace(Hotkey)) Hotkey = "Ctrl+Alt+Z";
             if (LastTargetLang != "zh-Hant" && LastTargetLang != "en") LastTargetLang = "zh-Hant";
 

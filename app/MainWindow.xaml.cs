@@ -147,6 +147,7 @@ namespace NextAITranslator
         {
             if (e.Key == Key.Escape)
             {
+                SaveWindowSize();
                 Hide();
                 e.Handled = true;
             }
@@ -219,10 +220,7 @@ namespace NextAITranslator
 
         protected override void OnClosing(CancelEventArgs e)
         {
-            // Save window size so the next open restores it.
-            App.Config.WindowWidth = Width;
-            App.Config.WindowHeight = Height;
-            App.Config.Save();
+            SaveWindowSize();
 
             // Closing the window just hides it; the app keeps living in the tray.
             if (!_reallyExit)
@@ -231,6 +229,13 @@ namespace NextAITranslator
                 Hide();
             }
             base.OnClosing(e);
+        }
+
+        private void SaveWindowSize()
+        {
+            App.Config.WindowWidth = Width;
+            App.Config.WindowHeight = Height;
+            App.Config.Save();
         }
 
         private void CopyButton_Click(object sender, RoutedEventArgs e)
@@ -306,7 +311,7 @@ namespace NextAITranslator
                     App.Config, SelectedLang, text,
                     delta => OnDelta(delta, gen),
                     ct);
-                FlushPending(); // ensure the tail is rendered
+                FlushPending(gen); // ensure the tail is rendered
             }
             catch (OperationCanceledException)
             {
@@ -314,6 +319,7 @@ namespace NextAITranslator
             }
             catch (Exception ex) when (!ct.IsCancellationRequested)
             {
+                lock (_bufLock) { _pending.Clear(); _flushQueued = false; }
                 OutputBox.Text = "翻譯失敗：" + ex.Message;
             }
             catch
@@ -346,14 +352,15 @@ namespace NextAITranslator
                 if (_flushQueued) return;
                 _flushQueued = true;
             }
-            Dispatcher.BeginInvoke(new Action(FlushPending), System.Windows.Threading.DispatcherPriority.Background);
+            Dispatcher.BeginInvoke(new Action(() => FlushPending(gen)), System.Windows.Threading.DispatcherPriority.Background);
         }
 
-        private void FlushPending()
+        private void FlushPending(int gen)
         {
             string chunk;
             lock (_bufLock)
             {
+                if (gen != _gen) return;
                 chunk = _pending.ToString();
                 _pending.Clear();
                 _flushQueued = false;

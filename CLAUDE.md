@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**NextAI 翻譯** — a minimal, fast, native Windows translation app. Open a window, paste
+**NextAI 翻譯** — minimal native Windows and macOS translation apps. Open a window, paste
 text, pick a target language, translate. That is the whole scope, on purpose.
 
 It is a from-scratch **.NET 8 WPF** rewrite that replaced an earlier Tauri/WebView2 +
-React app (deleted). The whole project lives in `app/`. There is no Node, no webview,
+React app (deleted). The Windows project lives in `app/`. There is no Node, no webview,
 and essentially no NuGet dependencies — only the .NET BCL + WPF.
 
 ## Commands
@@ -26,8 +26,21 @@ Run from the repo root:
   ```
   The deliverable is `dist-fd/NextAITranslator.exe` (~0.2 MB).
 
-There is no test project; verification is done with throwaway console harnesses against a
+Windows has no test project; verification is done with throwaway console harnesses against a
 local `HttpListener` serving canned SSE/JSON (see git history), then removed.
+
+## macOS (`mac/`)
+
+The independent SwiftUI/AppKit app targets Apple Silicon and macOS 14+, with Swift 6 and
+no third-party packages. It supports Gemini, Keychain credentials, UserDefaults preferences,
+native resizable input/output panes, a menu bar, global hotkey, and login startup via
+`SMAppService.mainApp`. See `AGENTS.md` and `mac/README.md` for its architecture and use.
+
+Run `swift test --package-path mac` for regression tests and `mac/package-app.sh` to create
+`dist-mac/NextAI 翻譯.app`. Tests use isolated preferences and injected test keys; do not read
+real Keychain credentials or call paid APIs. Existing `.app` bundles need no Xcode to run.
+macOS bundle versions are in `mac/Info.plist`; MinVer below only applies to Windows.
+`dist-mac/` and Windows `.exe` files are ignored by Git, so pushing source does not ship binaries.
 
 ## Versioning
 
