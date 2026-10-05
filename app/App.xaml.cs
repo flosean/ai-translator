@@ -27,6 +27,15 @@ namespace NextAITranslator
         public static bool ApplyHotkey() =>
             _instance?._hotkey?.Register(Config.Hotkey) ?? false;
 
+        public static bool TrySaveConfig(AppConfig config, out string? error)
+        {
+            // Flush queued UI changes before replacing their config instance.
+            Config.FlushPendingSave(out _);
+            if (!config.TrySave(out error)) return false;
+            Config = config;
+            return true;
+        }
+
         private void Application_Startup(object sender, StartupEventArgs e)
         {
             _instance = this;
@@ -79,6 +88,7 @@ namespace NextAITranslator
 
         private void Application_Exit(object sender, ExitEventArgs e)
         {
+            Config?.FlushPendingSave(out _);
             _hotkey?.Dispose();
             _tray?.Dispose();
 

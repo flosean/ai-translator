@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Threading;
 using NextAITranslator.Core;
 using NextAITranslator.Interop;
 
@@ -16,6 +17,10 @@ namespace NextAITranslator
         private bool _loaded;
         private CancellationTokenSource? _cts;
         private string _selectedLang = "zh-Hant";
+        private readonly DispatcherTimer _flushTimer = new(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(40),
+        };
 
         public MainWindow()
         {
@@ -33,6 +38,7 @@ namespace NextAITranslator
             KeyDown += OnKeyDown;
             InputBox.PreviewMouseWheel += OnContentWheel;
             OutputBox.PreviewMouseWheel += OnContentWheel;
+            _flushTimer.Tick += (_, _) => FlushPending(_gen);
             _loaded = true;
         }
 
@@ -51,7 +57,7 @@ namespace NextAITranslator
             if (ToneBox.SelectedValue is string tone)
             {
                 App.Config.Tone = tone;
-                App.Config.Save();
+                App.Config.RequestSave();
             }
         }
 
@@ -74,7 +80,7 @@ namespace NextAITranslator
             size = Math.Clamp(Math.Round(size), 12.0, 40.0);
             if (size == App.Config.ContentFontSize) return; // e.g. wheel past the clamp edge
             App.Config.ContentFontSize = size;
-            App.Config.Save();
+            App.Config.RequestSave();
             ApplyContentFont();
         }
 
@@ -103,7 +109,7 @@ namespace NextAITranslator
             var r = Math.Clamp(InputRow.Height.Value / total, 0.15, 0.85);
             if (r == App.Config.SplitRatio) return;
             App.Config.SplitRatio = r;
-            App.Config.Save();
+            App.Config.RequestSave();
         }
 
         // ----- UI scale -----
@@ -120,7 +126,7 @@ namespace NextAITranslator
             s = Math.Clamp(Math.Round(s, 2), 1.0, 2.0);
             if (s == App.Config.UiScale) return; // e.g. Ctrl+'+' past the clamp edge
             App.Config.UiScale = s;
-            App.Config.Save();
+            App.Config.RequestSave();
             ApplyScale();
         }
 
@@ -222,7 +228,9 @@ namespace NextAITranslator
             // Save window size so the next open restores it.
             App.Config.WindowWidth = Width;
             App.Config.WindowHeight = Height;
-            App.Config.Save();
+            if (!App.Config.TrySave(out var error))
+                System.Windows.MessageBox.Show(this, "無法儲存設定：" + error,
+                    "NextAI 翻譯", MessageBoxButton.OK, MessageBoxImage.Warning);
 
             // Closing the window just hides it; the app keeps living in the tray.
             if (!_reallyExit)
@@ -231,6 +239,12 @@ namespace NextAITranslator
                 Hide();
             }
             base.OnClosing(e);
+        }
+
+        protected override void OnClosed(EventArgs e)
+        {
+            CancelTranslation();
+            base.OnClosed(e);
         }
 
         private void CopyButton_Click(object sender, RoutedEventArgs e)
@@ -275,9 +289,10 @@ namespace NextAITranslator
             if (App.Config.LastTargetLang != SelectedLang)
             {
                 App.Config.LastTargetLang = SelectedLang;
-                App.Config.Save();
+                App.Config.RequestSave();
             }
 
+            CancelTranslation();
             var provider = App.Config.CurrentProvider();
             if (string.IsNullOrWhiteSpace(provider.ApiKey))
             {
@@ -285,10 +300,9 @@ namespace NextAITranslator
                 return;
             }
 
-            // Cancel any in-flight translation.
-            _cts?.Cancel();
-            _cts = new CancellationTokenSource();
-            var ct = _cts.Token;
+            var cts = new CancellationTokenSource();
+            _cts = cts;
+            var ct = cts.Token;
 
             TranslateButton.IsEnabled = false;
             OutputBox.Text = "";
@@ -297,8 +311,8 @@ namespace NextAITranslator
             // the UI in batches (non-blocking) so reading isn't stalled per token.
             // The generation stamp keeps a superseded translation's late deltas out
             // of the new translation's buffer.
-            int gen;
-            lock (_bufLock) { gen = ++_gen; _pending.Clear(); _flushQueued = false; }
+            var gen = _gen;
+            _flushTimer.Start();
 
             try
             {
@@ -306,35 +320,50 @@ namespace NextAITranslator
                     App.Config, SelectedLang, text,
                     delta => OnDelta(delta, gen),
                     ct);
-                FlushPending(); // ensure the tail is rendered
+                if (!ct.IsCancellationRequested)
+                    FlushPending(gen); // render the tail immediately on completion
             }
-            catch (OperationCanceledException)
+            catch (Exception) when (ct.IsCancellationRequested)
             {
                 // Superseded by a newer translation; ignore.
             }
-            catch (Exception ex) when (!ct.IsCancellationRequested)
+            catch (Exception ex)
             {
-                OutputBox.Text = "翻譯失敗：" + ex.Message;
-            }
-            catch
-            {
-                // Cancellation can surface as other exception types (socket abort);
-                // a superseded translation must not overwrite the new output.
+                if (gen == _gen)
+                {
+                    lock (_bufLock) { ++_gen; _pending.Clear(); }
+                    OutputBox.Text = ex is OperationCanceledException or TimeoutException
+                        ? "翻譯逾時，請稍後重試或檢查網路連線。"
+                        : "翻譯失敗：" + ex.Message;
+                }
             }
             finally
             {
                 // Only the latest translation may re-enable the button; a superseded
                 // one finishing late must not re-enable it mid-stream.
-                if (gen == _gen)
+                if (ReferenceEquals(_cts, cts))
+                {
+                    _flushTimer.Stop();
+                    _cts = null;
                     TranslateButton.IsEnabled = true;
+                }
+                cts.Dispose();
             }
+        }
+
+        private void CancelTranslation()
+        {
+            lock (_bufLock) { ++_gen; _pending.Clear(); }
+            _flushTimer.Stop();
+            _cts?.Cancel();
+            _cts = null; // the owning async method disposes its source
+            TranslateButton.IsEnabled = true;
         }
 
         // ----- streaming buffer (coalesced UI updates) -----
 
         private readonly object _bufLock = new();
         private readonly System.Text.StringBuilder _pending = new();
-        private bool _flushQueued;
         private int _gen;
 
         private void OnDelta(string delta, int gen)
@@ -343,20 +372,17 @@ namespace NextAITranslator
             {
                 if (gen != _gen) return; // stale delta from a superseded translation
                 _pending.Append(delta);
-                if (_flushQueued) return;
-                _flushQueued = true;
             }
-            Dispatcher.BeginInvoke(new Action(FlushPending), System.Windows.Threading.DispatcherPriority.Background);
         }
 
-        private void FlushPending()
+        private void FlushPending(int gen)
         {
             string chunk;
             lock (_bufLock)
             {
+                if (gen != _gen) return;
                 chunk = _pending.ToString();
                 _pending.Clear();
-                _flushQueued = false;
             }
             if (chunk.Length == 0) return;
             OutputBox.AppendText(chunk);

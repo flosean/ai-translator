@@ -3,6 +3,7 @@ using System.IO;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Windows.Threading;
 
 namespace NextAITranslator.Storage
 {
@@ -64,6 +65,17 @@ namespace NextAITranslator.Storage
 
         public static readonly string ConfigPath = Path.Combine(Dir, "config.json");
 
+        private readonly string _configPath;
+        private DispatcherTimer? _saveTimer;
+
+        public AppConfig() : this(ConfigPath) { }
+
+        // Allows persistence checks to use a temporary path without touching the user's settings.
+        internal AppConfig(string configPath) => _configPath = configPath;
+
+        [JsonIgnore]
+        public string? LastSaveError { get; private set; }
+
         private static readonly JsonSerializerOptions JsonOpts = new()
         {
             WriteIndented = true,
@@ -99,14 +111,77 @@ namespace NextAITranslator.Storage
 
         public void Save()
         {
-            Directory.CreateDirectory(Dir);
+            _saveTimer?.Stop();
+            EnsureDefaults();
             var json = JsonSerializer.Serialize(this, JsonOpts);
-            File.WriteAllText(ConfigPath, json);
+            var directory = Path.GetDirectoryName(_configPath)!;
+            Directory.CreateDirectory(directory);
+            var temporaryPath = Path.Combine(directory, $".config-{System.Guid.NewGuid():N}.tmp");
+            try
+            {
+                File.WriteAllText(temporaryPath, json);
+                // A same-directory rename replaces the old file only after the new JSON is complete.
+                File.Move(temporaryPath, _configPath, overwrite: true);
+                LastSaveError = null;
+            }
+            finally
+            {
+                try { File.Delete(temporaryPath); }
+                catch (IOException) { }
+                catch (System.UnauthorizedAccessException) { }
+            }
+        }
+
+        public bool TrySave(out string? error)
+        {
+            try
+            {
+                Save();
+                error = null;
+                return true;
+            }
+            catch (System.Exception ex) when (ex is IOException or System.UnauthorizedAccessException)
+            {
+                error = LastSaveError = ex.Message;
+                return false;
+            }
+        }
+
+        /// <summary>Coalesce rapid UI changes. Call on the UI dispatcher, like all config edits.</summary>
+        public void RequestSave()
+        {
+            if (_saveTimer == null)
+            {
+                _saveTimer = new DispatcherTimer { Interval = System.TimeSpan.FromMilliseconds(300) };
+                _saveTimer.Tick += (_, _) => TrySave(out _);
+            }
+            _saveTimer.Stop();
+            _saveTimer.Start();
+        }
+
+        public bool FlushPendingSave(out string? error)
+        {
+            error = null;
+            return _saveTimer?.IsEnabled != true || TrySave(out error);
         }
 
         /// <summary>Make sure the providers we ship always have an entry with sane defaults.</summary>
         public void EnsureDefaults()
         {
+            Providers ??= new();
+            foreach (var key in new List<string>(Providers.Keys))
+            {
+                var provider = Providers[key];
+                if (provider == null)
+                {
+                    Providers.Remove(key);
+                    continue;
+                }
+                provider.ApiKey ??= "";
+                provider.BaseUrl ??= "";
+                provider.Model ??= "";
+            }
+
             if (!Providers.TryGetValue("openai", out var openai))
             {
                 openai = new ProviderConfig();
@@ -123,7 +198,8 @@ namespace NextAITranslator.Storage
             if (string.IsNullOrWhiteSpace(gemini.BaseUrl)) gemini.BaseUrl = "https://generativelanguage.googleapis.com/v1beta";
             if (string.IsNullOrWhiteSpace(gemini.Model)) gemini.Model = "gemini-2.0-flash";
 
-            if (string.IsNullOrWhiteSpace(Provider)) Provider = "gemini";
+            // Keep configured custom providers (OpenAI-compatible), but never select an absent entry.
+            if (string.IsNullOrWhiteSpace(Provider) || !Providers.ContainsKey(Provider)) Provider = "gemini";
             if (string.IsNullOrWhiteSpace(Hotkey)) Hotkey = "Ctrl+Alt+Z";
             if (LastTargetLang != "zh-Hant" && LastTargetLang != "en") LastTargetLang = "zh-Hant";
 
@@ -149,7 +225,7 @@ namespace NextAITranslator.Storage
         public ProviderConfig CurrentProvider()
         {
             EnsureDefaults();
-            return Providers.TryGetValue(Provider, out var p) ? p : Providers["gemini"];
+            return Providers[Provider];
         }
     }
 }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Globalization;
 using System.Threading;
+using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -21,6 +22,10 @@ namespace NextAITranslator
         private bool _scaleTouched;
         private bool _fontTouched;
         private CancellationTokenSource? _modelCts;
+        private (string Provider, string Url, string Key)? _activeModelQuery;
+        private (string Provider, string Url, string Key)? _lastModelQuery;
+        private bool _loadingProviderFields;
+        private bool _closed;
 
         public SettingsWindow()
         {
@@ -51,6 +56,9 @@ namespace NextAITranslator
             _currentKey = SelectedProviderKey();
             LoadProviderFields(_currentKey);
             _loaded = true;
+            ApiKeyBox.TextChanged += ModelConnectionChanged;
+            BaseUrlBox.TextChanged += ModelConnectionChanged;
+            BaseUrlBox.LostFocus += ApiKeyBox_LostFocus;
         }
 
         private string SelectedProviderKey() =>
@@ -110,6 +118,7 @@ namespace NextAITranslator
 
         private void LoadProviderFields(string key)
         {
+            _loadingProviderFields = true;
             if (!_work.TryGetValue(key, out var p))
             {
                 p = new ProviderConfig();
@@ -122,6 +131,8 @@ namespace NextAITranslator
                 ModelBox.Items.Add(p.Model);
             ModelBox.Text = p.Model;
             ModelStatus.Text = "貼上 API Key 後會自動列出可用模型，或按「重新整理」。";
+            _loadingProviderFields = false;
+            _lastModelQuery = null;
         }
 
         private void FlushProviderFields(string key)
@@ -140,7 +151,7 @@ namespace NextAITranslator
         {
             if (!_loaded) return;
             // An in-flight fetch for the old provider must not fill the new one's list.
-            _modelCts?.Cancel();
+            CancelModelFetch();
             FlushProviderFields(_currentKey);
             _currentKey = SelectedProviderKey();
             LoadProviderFields(_currentKey);
@@ -148,7 +159,33 @@ namespace NextAITranslator
 
         // ----- model listing -----
 
-        private async void RefreshButton_Click(object sender, RoutedEventArgs e) => await FetchModelsAsync();
+        private async void RefreshButton_Click(object sender, RoutedEventArgs e) => await FetchModelsAsync(force: true);
+
+        private void CancelModelFetch()
+        {
+            _modelCts?.Cancel();
+            _modelCts = null;
+            _activeModelQuery = null;
+            RefreshButton.IsEnabled = true;
+        }
+
+        private void ModelConnectionChanged(object sender, TextChangedEventArgs e)
+        {
+            if (!_loaded || _loadingProviderFields) return;
+            CancelModelFetch();
+            _lastModelQuery = null;
+            var current = ModelBox.Text;
+            ModelBox.Items.Clear();
+            ModelBox.Text = current;
+            ModelStatus.Text = "連線設定已變更，離開欄位或按「重新整理」取得模型。";
+        }
+
+        protected override void OnClosed(EventArgs e)
+        {
+            _closed = true;
+            CancelModelFetch();
+            base.OnClosed(e);
+        }
 
         private async void ApiKeyBox_LostFocus(object sender, RoutedEventArgs e)
         {
@@ -156,8 +193,9 @@ namespace NextAITranslator
                 await FetchModelsAsync();
         }
 
-        private async Task FetchModelsAsync()
+        private async Task FetchModelsAsync(bool force = false)
         {
+            if (_closed) return;
             var key = ApiKeyBox.Text.Trim();
             if (key.Length == 0)
             {
@@ -173,9 +211,13 @@ namespace NextAITranslator
                 Model = ModelBox.Text.Trim(),
             };
 
-            _modelCts?.Cancel();
+            var query = (provider, cfg.BaseUrl, key);
+            if (_activeModelQuery == query || (!force && _lastModelQuery == query)) return;
+
+            CancelModelFetch();
             var cts = new CancellationTokenSource();
             _modelCts = cts;
+            _activeModelQuery = query;
             var ct = cts.Token;
 
             RefreshButton.IsEnabled = false;
@@ -190,24 +232,28 @@ namespace NextAITranslator
                 foreach (var m in models)
                     ModelBox.Items.Add(m);
                 ModelBox.Text = current; // preserve the user's current choice / typed text
+                _lastModelQuery = query;
                 ModelStatus.Text = models.Count > 0
                     ? $"找到 {models.Count} 個模型，可從下拉選擇。"
                     : "沒有取得到任何模型，可手動輸入模型名稱。";
             }
-            catch (OperationCanceledException) { }
-            catch (Exception ex) when (!ct.IsCancellationRequested)
+            catch (Exception) when (ct.IsCancellationRequested) { }
+            catch (Exception ex)
             {
-                ModelStatus.Text = "取得模型失敗：" + ex.Message;
-            }
-            catch
-            {
-                // A cancelled fetch must not overwrite the status of a newer one.
+                ModelStatus.Text = ex is OperationCanceledException or TimeoutException
+                    ? "取得模型逾時，請檢查網路後重試。"
+                    : "取得模型失敗：" + ex.Message;
             }
             finally
             {
                 // Only the latest fetch may re-enable the button.
                 if (_modelCts == cts)
+                {
+                    _modelCts = null;
+                    _activeModelQuery = null;
                     RefreshButton.IsEnabled = true;
+                }
+                cts.Dispose();
             }
         }
 
@@ -249,37 +295,50 @@ namespace NextAITranslator
                 return;
             }
 
+            var config = JsonSerializer.Deserialize<AppConfig>(JsonSerializer.Serialize(App.Config))!;
+
             foreach (var kv in _work)
             {
-                if (!App.Config.Providers.TryGetValue(kv.Key, out var dst))
+                if (!config.Providers.TryGetValue(kv.Key, out var dst))
                 {
                     dst = new ProviderConfig();
-                    App.Config.Providers[kv.Key] = dst;
+                    config.Providers[kv.Key] = dst;
                 }
                 dst.ApiKey = kv.Value.ApiKey;
                 dst.BaseUrl = kv.Value.BaseUrl;
                 dst.Model = kv.Value.Model;
             }
 
-            App.Config.Provider = _currentKey;
-            App.Config.Hotkey = hotkey;
-            App.Config.AutoTranslate = AutoTranslateBox.IsChecked == true;
-            SetStartup(StartupBox.IsChecked == true);
+            config.Provider = _currentKey;
+            config.Hotkey = hotkey;
+            config.AutoTranslate = AutoTranslateBox.IsChecked == true;
 
             var prompt = PromptBox.Text.Trim();
-            App.Config.PromptTemplate = prompt.Length > 0 ? prompt : AppConfig.DefaultPromptTemplate;
+            config.PromptTemplate = prompt.Length > 0 ? prompt : AppConfig.DefaultPromptTemplate;
 
             if (_scaleTouched && ScaleBox.SelectedValue is string scaleStr &&
                 double.TryParse(scaleStr, NumberStyles.Float, CultureInfo.InvariantCulture, out var scale))
-                App.Config.UiScale = scale;
+                config.UiScale = scale;
 
             if (_fontTouched && FontSizeBox.SelectedValue is string fontStr &&
                 double.TryParse(fontStr, NumberStyles.Float, CultureInfo.InvariantCulture, out var font))
-                App.Config.ContentFontSize = font;
+                config.ContentFontSize = font;
 
-            App.Config.EnsureDefaults();
-            App.Config.Save();
+            config.EnsureDefaults();
+            if (!App.TrySaveConfig(config, out var error))
+            {
+                System.Windows.MessageBox.Show(this,
+                    "無法儲存設定：" + error + "\n請排除檔案存取問題後再按儲存。",
+                    "設定", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
 
+            try { SetStartup(StartupBox.IsChecked == true); }
+            catch (Exception ex) when (ex is System.Security.SecurityException or UnauthorizedAccessException or System.IO.IOException)
+            {
+                System.Windows.MessageBox.Show(this, "設定已儲存，但無法變更開機啟動：" + ex.Message,
+                    "設定", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
             if (!App.ApplyHotkey())
             {
                 System.Windows.MessageBox.Show(this,
