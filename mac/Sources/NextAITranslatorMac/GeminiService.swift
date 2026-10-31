@@ -23,7 +23,12 @@ enum GeminiService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(body)
 
-        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+        try await stream(request, onDelta: onDelta)
+    }
+
+    static func stream(_ request: URLRequest, session: URLSession = .shared,
+                       onDelta: @escaping @MainActor @Sendable (String) -> Void) async throws {
+        let (bytes, response) = try await session.bytes(for: request)
         guard let http = response as? HTTPURLResponse else { throw GeminiError.message("無法取得 Gemini 回應。") }
         guard (200..<300).contains(http.statusCode) else {
             var message = "HTTP \(http.statusCode)"
@@ -36,23 +41,29 @@ enum GeminiService {
 
         var parser = SSEParser()
         var receivedText = false
-        for try await line in bytes.lines {
-            for payload in parser.consume(line) {
-                for delta in try textDeltas(from: payload) {
-                    try Task.checkCancellation()
-                    await onDelta(delta)
-                    receivedText = true
-                }
-            }
-        }
-        for payload in parser.finish() {
-            for delta in try textDeltas(from: payload) {
+        func consume(_ payload: String) async throws -> Bool {
+            try Task.checkCancellation()
+            let event = try streamEvent(from: payload)
+            for delta in event.deltas {
                 try Task.checkCancellation()
                 await onDelta(delta)
                 receivedText = true
             }
+            if event.finished && !receivedText {
+                throw GeminiError.message("Gemini 沒有回傳可顯示的翻譯結果。")
+            }
+            return event.finished
         }
-        guard receivedText else { throw GeminiError.message("Gemini 沒有回傳可顯示的翻譯結果。") }
+        for try await line in bytes.lines {
+            for payload in parser.consume(line) {
+                if try await consume(payload) { return }
+            }
+        }
+        for payload in parser.finish() {
+            if try await consume(payload) { return }
+        }
+        try Task.checkCancellation()
+        throw GeminiError.message("Gemini 串流未完整結束，翻譯結果可能不完整，請重試。")
     }
 
     static func listModels(apiKey: String) async throws -> [String] {
@@ -82,16 +93,28 @@ enum GeminiService {
         return url
     }
 
-    static func textDeltas(from payload: String) throws -> [String] {
-        guard let data = payload.data(using: .utf8),
-              let response = try? JSONDecoder().decode(GenerateResponse.self, from: data) else { return [] }
+    static func streamEvent(from payload: String) throws -> (deltas: [String], finished: Bool) {
+        let response: GenerateResponse
+        do {
+            response = try JSONDecoder().decode(GenerateResponse.self, from: Data(payload.utf8))
+        } catch {
+            throw GeminiError.message("Gemini 串流資料格式錯誤，翻譯結果可能不完整，請重試。")
+        }
         if let error = response.error {
             throw GeminiError.message("Gemini API 錯誤：\(error.message)")
         }
-        return (response.candidates?.first?.content?.parts ?? []).compactMap { part in
+        let candidate = response.candidates?.first
+        if let reason = candidate?.finishReason, reason != "STOP", reason != "FINISH_REASON_UNSPECIFIED" {
+            if reason == "MAX_TOKENS" {
+                throw GeminiError.message("Gemini 已達輸出長度上限，翻譯結果不完整，請縮短原文後重試。")
+            }
+            throw GeminiError.message("Gemini 提前結束翻譯（\(reason)），結果可能不完整，請重試。")
+        }
+        let deltas = (candidate?.content?.parts ?? []).compactMap { part -> String? in
             guard part.thought != true, let text = part.text, !text.isEmpty else { return nil }
             return text
         }
+        return (deltas, candidate?.finishReason == "STOP")
     }
 }
 
@@ -146,7 +169,10 @@ private struct GenerateResponse: Decodable {
     let candidates: [Candidate]?
     let error: APIError?
 }
-private struct Candidate: Decodable { let content: ResponseContent? }
+private struct Candidate: Decodable {
+    let content: ResponseContent?
+    let finishReason: String?
+}
 private struct ResponseContent: Decodable { let parts: [ResponsePart]? }
 private struct ResponsePart: Decodable {
     let text: String?

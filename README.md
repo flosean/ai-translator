@@ -48,7 +48,7 @@ dotnet publish app/NextAITranslator.csproj -c Release -r win-x64 --self-containe
 
 ## macOS（Apple Silicon）
 
-`mac/` 是原生 SwiftUI 版本，限定 macOS 14 以上與 Apple Silicon。它保留完整輸入／輸出翻譯介面、Gemini SSE 串流、選單列常駐、`⌥⌘Z` 全域快捷鍵，以及剪貼簿自動翻譯；API Key 存在 macOS Keychain。
+`mac/` 是原生 SwiftUI 版本，限定 macOS 14 以上與 Apple Silicon。它保留完整輸入／輸出翻譯介面、Gemini SSE 串流、選單列常駐、`⌥⌘Z` 全域快捷鍵，以及剪貼簿自動翻譯；API Key 以明文存在本機設定檔 `~/Library/Application Support/NextAITranslator/credentials.json`（目錄權限 700、檔案權限 600）。
 
 需要 Xcode 16 以上。最方便是用 Xcode 開啟 `mac/Package.swift` 後按 Run；也可在終端機執行：
 
@@ -57,7 +57,7 @@ cd mac
 swift run
 ```
 
-首次啟動後從選單列的「設定」填入 Gemini API Key，按「儲存 API Key」，模型使用 `gemini-3.5-flash` 或按「讀取模型」後選擇可用模型。模型與其他偏好會自動保存；API Key 則只保存在 macOS Keychain。舊版的 `gemini-2.0-flash` 已被 Google 關閉，App 會自動改用 `gemini-3.5-flash`。
+首次啟動後從選單列的「設定」填入 Gemini API Key，按「儲存 API Key」，模型使用 `gemini-3.5-flash` 或按「讀取模型」後選擇可用模型。模型與其他偏好會自動保存；API Key 則以明文保存在上述本機設定檔，僅目前帳號可讀寫。舊版的 `gemini-2.0-flash` 已被 Google 關閉，App 會自動改用 `gemini-3.5-flash`。
 
 勾選「叫出時自動翻譯剪貼簿」後，按 `⌥⌘Z` 就會讀取剪貼簿並開始翻譯；快捷鍵的字母可在設定中改成另一個單一英文字母。
 
@@ -69,7 +69,7 @@ mac/package-app.sh
 
 成品在 `dist-mac/NextAI 翻譯.app`，拖進「應用程式」資料夾即可使用。
 
-輸入與翻譯結果的高度可透過中間控制列下方的水平分隔線調整：按住分隔線上下拖曳即可，兩區各保留最小可閱讀高度。
+輸入與翻譯結果的高度可透過中間控制列下方的灰色把手調整：按住把手上下拖曳即可，兩區各保留最小可閱讀高度。
 
 內容區直接從輸入框開始，不重複顯示 App 標題；設定齒輪位於視窗左下角。
 
@@ -80,7 +80,8 @@ mac/package-app.sh
 ## 穩定性修正
 
 - 兩版均支援多行 SSE 回應，忽略 Gemini 思考與非文字片段；API 錯誤或沒有譯文時顯示錯誤訊息。
-- macOS 更新鑰匙圈金鑰時直接修改既有項目，避免先刪除後儲存失敗而遺失金鑰。
+- macOS 會檢查 Gemini 的正常結束訊號；串流截斷、資料格式損壞、達到輸出上限或被安全機制中止時，會明確提示翻譯可能不完整，請重試。
+- macOS 不再存取鑰匙圈；舊版使用者需重新輸入並儲存一次 API Key。清空後儲存會刪除本機金鑰檔。
 - Windows 可復原設定檔中的空值及不存在的供應商，儲存時以完整新檔取代舊檔；預設 Gemini 模型及舊的 `gemini-2.0-flash` 設定改用 `gemini-3.5-flash`。
 - Windows 修正串流錯誤後殘留文字、Esc 隱藏時未記住視窗大小，以及登入啟動登錄位置不存在時無法啟用的問題。
 

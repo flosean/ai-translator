@@ -4,6 +4,33 @@ import XCTest
 
 @MainActor
 final class NextAITranslatorMacTests: XCTestCase {
+    func testAPIKeyFilePersistencePermissionsAndDeletion() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let file = directory.appendingPathComponent("credentials.json")
+        let suite = "NextAITranslatorMacTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+            defaults.removePersistentDomain(forName: suite)
+        }
+        XCTAssertEqual(APIKeyStore.load(from: file), "")
+        let settings = AppSettings(defaults: defaults, apiKey: "  test-key\n", apiKeyFile: file)
+        try settings.saveAPIKey()
+        XCTAssertEqual(AppSettings(defaults: defaults, apiKeyFile: file).apiKey, "test-key")
+        for (url, mode) in [(directory, 0o700), (file, 0o600)] {
+            let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+            XCTAssertEqual((attributes[.posixPermissions] as? NSNumber)?.intValue, mode)
+        }
+        settings.apiKey = "replacement"
+        try settings.saveAPIKey()
+        XCTAssertEqual(APIKeyStore.load(from: file), "replacement")
+        settings.apiKey = " "
+        try settings.saveAPIKey()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+        try settings.saveAPIKey()
+        XCTAssertEqual(APIKeyStore.load(from: file), "")
+    }
+
     func testSSEParserWaitsForBlankLine() {
         var parser = SSEParser()
         XCTAssertEqual(parser.consume("data: {\"a\":1}"), [])
@@ -22,14 +49,63 @@ final class NextAITranslatorMacTests: XCTestCase {
         XCTAssertEqual(parser.consume("data: {\"candidates\":"), [])
         XCTAssertEqual(parser.consume("data: [{\"content\":{\"parts\":[{\"text\":\"你好\"}]}}]}"), [])
         let payload = try XCTUnwrap(parser.consume("").first)
-        XCTAssertEqual(try GeminiService.textDeltas(from: payload), ["你好"])
+        XCTAssertEqual(try GeminiService.streamEvent(from: payload).deltas, ["你好"])
     }
 
     func testGeminiIgnoresThoughtsAndNonTextPartsAndExtraCandidates() throws {
         let payload = #"{"candidates":[{"content":{"parts":[{"text":"thinking","thought":true},{"inlineData":{}},{"text":"result"}]}},{"content":{"parts":[{"text":"other"}]}}]}"#
-        XCTAssertEqual(try GeminiService.textDeltas(from: payload), ["result"])
-        XCTAssertThrowsError(try GeminiService.textDeltas(from: #"{"error":{"message":"quota exceeded"}}"#))
-        XCTAssertEqual(try GeminiService.textDeltas(from: #"{"candidates":[{"finishReason":"SAFETY"}]}"#), [])
+        XCTAssertEqual(try GeminiService.streamEvent(from: payload).deltas, ["result"])
+        XCTAssertThrowsError(try GeminiService.streamEvent(from: #"{"error":{"message":"quota exceeded"}}"#))
+        XCTAssertThrowsError(try GeminiService.streamEvent(from: #"{"candidates":[{"finishReason":"SAFETY"}]}"#))
+    }
+
+    func testGeminiStreamAcceptsOnlyCompletedTextResponses() async {
+        let text = #"{"candidates":[{"content":{"parts":[{"text":"譯文"}]}}]}"#
+        let stop = #"{"candidates":[{"finishReason":"STOP"}]}"#
+        for separator in ["\n\n", "\n"] {
+            let result = await runStream("data: \(text)\(separator)data: \(stop)")
+            XCTAssertEqual(result.text, "譯文")
+            XCTAssertNil(result.error)
+        }
+        let result = await runStream("data: {\"candidates\":\n" +
+            "data: [{\"content\":{\"parts\":[{\"text\":\"譯文\"}]},\"finishReason\":\"STOP\"}]}\n\n")
+        XCTAssertEqual(result.text, "譯文")
+        XCTAssertNil(result.error)
+    }
+
+    func testGeminiStreamRejectsTruncationMalformedEventsAndAbnormalStops() async {
+        let text = "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"半段翻譯\"}]}}]}\n\n"
+        let cases = [
+            ("", "串流未完整結束"),
+            ("data: {\"candidates\":[", "資料格式錯誤"),
+            ("data: {broken}\n\ndata: {\"candidates\":[{\"finishReason\":\"STOP\"}]}\n\n", "資料格式錯誤"),
+            ("data: {\"candidates\":[{\"finishReason\":\"MAX_TOKENS\"}]}\n\n", "輸出長度上限"),
+            ("data: {\"candidates\":[{\"finishReason\":\"SAFETY\"}]}\n\n", "提前結束"),
+            ("data: {\"error\":{\"message\":\"test quota error\"}}\n\n", "test quota error")
+        ]
+        for (tail, expectedError) in cases {
+            let result = await runStream(text + tail)
+            XCTAssertEqual(result.text, "半段翻譯")
+            XCTAssertTrue(result.error?.contains(expectedError) == true, "Unexpected error: \(result.error ?? "none")")
+        }
+        let empty = await runStream("data: {\"candidates\":[{\"finishReason\":\"STOP\"}]}\n\n")
+        XCTAssertTrue(empty.error?.contains("沒有回傳") == true)
+    }
+
+    private func runStream(_ body: String) async -> (text: String, error: String?) {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [CannedGeminiProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        var request = URLRequest(url: URL(string: "https://gemini.invalid/test")!)
+        request.setValue(Data(body.utf8).base64EncodedString(), forHTTPHeaderField: "X-Test-Stream")
+        let output = StreamOutput()
+        do {
+            try await GeminiService.stream(request, session: session) { output.text += $0 }
+            return (output.text, nil)
+        } catch {
+            return (output.text, error.localizedDescription)
+        }
     }
 
     func testSettingsPersistToTheirOwnStoreAndClampInvalidValues() {
@@ -115,34 +191,14 @@ final class NextAITranslatorMacTests: XCTestCase {
         XCTAssertFalse(translator.isTranslating)
     }
 
-    func testTranslationPanesResizeWithDivider() throws {
-        let suite = "NextAITranslatorMacTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let settings = AppSettings(defaults: defaults, apiKey: "")
-        let translator = TranslatorViewModel(settings: settings)
-        let host = NSHostingView(rootView: TranslatorView(settings: settings, translator: translator))
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 620, height: 660),
-                              styleMask: [.titled, .resizable], backing: .buffered, defer: false)
-        window.isReleasedWhenClosed = false
-        window.contentView = host
-        defer { window.close() }
-        host.layoutSubtreeIfNeeded()
-
-        func findSplit(in view: NSView) -> NSSplitView? {
-            if let split = view as? NSSplitView { return split }
-            return view.subviews.lazy.compactMap { findSplit(in: $0) }.first
-        }
-        let split = try XCTUnwrap(findSplit(in: host))
-        XCTAssertFalse(split.isVertical)
-        XCTAssertEqual(split.arrangedSubviews.count, 2)
-        split.setPosition(220, ofDividerAt: 0)
-        host.layoutSubtreeIfNeeded()
-        let before = split.arrangedSubviews.map { $0.frame.height }
-        split.setPosition(320, ofDividerAt: 0)
-        host.layoutSubtreeIfNeeded()
-        XCTAssertGreaterThan(split.arrangedSubviews[0].frame.height, before[0] + 50)
-        XCTAssertLessThan(split.arrangedSubviews[1].frame.height, before[1] - 50)
+    func testTranslationPanesResizeWithDivider() {
+        typealias Panes = ResizableTranslationPanes<EmptyView, EmptyView>
+        let available: CGFloat = 500
+        XCTAssertEqual(Panes.inputHeight(available: available, ratio: 0.5), 250)
+        XCTAssertEqual(Panes.inputHeight(available: available, ratio: 0.7), 350)
+        XCTAssertEqual(Panes.inputHeight(available: available, ratio: -1), 130)
+        XCTAssertEqual(Panes.inputHeight(available: available, ratio: 2), 420)
+        XCTAssertEqual(Panes.inputHeight(available: 300, ratio: 0.7), 210)
     }
 
     func testShutDownDefaultModelMigratesToCurrentModel() {
@@ -176,4 +232,28 @@ private final class ControlledTranslation {
     func finish(_ text: String, error: Error) {
         continuations.removeValue(forKey: text)?.resume(throwing: error)
     }
+}
+
+@MainActor
+private final class StreamOutput { var text = "" }
+
+private final class CannedGeminiProtocol: URLProtocol, @unchecked Sendable {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        guard let fixture = request.value(forHTTPHeaderField: "X-Test-Stream"),
+              let data = Data(base64Encoded: fixture),
+              let url = request.url,
+              let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil,
+                  headerFields: ["Content-Type": "text/event-stream"]) else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
+            return
+        }
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: data)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
 }

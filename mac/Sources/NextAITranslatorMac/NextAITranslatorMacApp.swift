@@ -1,5 +1,4 @@
 import AppKit
-import Security
 import ServiceManagement
 import SwiftUI
 
@@ -85,12 +84,14 @@ final class AppSettings: ObservableObject {
     @Published var hotkeyKey: String { didSet { save("hotkeyKey", hotkeyKey); NotificationCenter.default.post(name: .hotkeyChanged, object: hotkeyKey) } }
     @Published var models: [String] = []
     @Published var modelError = ""
+    private let apiKeyFile: URL
     private let defaults: UserDefaults
     private var modelTask: Task<Void, Never>?
 
-    init(defaults: UserDefaults = .standard, apiKey: String? = nil) {
+    init(defaults: UserDefaults = .standard, apiKey: String? = nil, apiKeyFile: URL = APIKeyStore.fileURL) {
         self.defaults = defaults
-        self.apiKey = apiKey ?? KeychainStore.load()
+        self.apiKeyFile = apiKeyFile
+        self.apiKey = apiKey ?? APIKeyStore.load(from: apiKeyFile)
         let storedModel = defaults.string(forKey: "model")
         model = storedModel == "gemini-2.0-flash" ? "gemini-3.5-flash" : (storedModel ?? "gemini-3.5-flash")
         target = defaults.string(forKey: "target") == "en" ? "en" : "zh-Hant"
@@ -105,7 +106,7 @@ final class AppSettings: ObservableObject {
 
     func saveAPIKey() throws {
         apiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        try KeychainStore.save(apiKey)
+        try APIKeyStore.save(apiKey, to: apiKeyFile)
     }
     func loadModels() {
         modelTask?.cancel()
@@ -217,7 +218,7 @@ struct TranslatorView: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            VSplitView {
+            ResizableTranslationPanes {
                 VStack(spacing: 12) {
                     InputTextView(
                         text: $translator.source,
@@ -239,8 +240,7 @@ struct TranslatorView: View {
                             .keyboardShortcut(.return, modifiers: .command).disabled(translator.source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || translator.isTranslating)
                     }
                 }
-                .padding(.bottom, 6)
-
+            } output: {
                 ScrollView {
                     Text(translator.output.isEmpty ? "翻譯結果會顯示在這裡" : translator.output)
                         .font(.system(size: settings.contentFontSize))
@@ -250,7 +250,6 @@ struct TranslatorView: View {
                 .frame(minHeight: 80, maxHeight: .infinity)
                 .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
                 .accessibilityLabel("翻譯結果")
-                .padding(.top, 6)
             }
             HStack {
                 SettingsLink { Image(systemName: "gearshape") }
@@ -270,6 +269,48 @@ struct TranslatorView: View {
         .padding(20)
         .frame(minWidth: 620, minHeight: 660)
         .onExitCommand { NSApp.keyWindow?.orderOut(nil) }
+    }
+}
+
+struct ResizableTranslationPanes<Input: View, Output: View>: View {
+    @ViewBuilder var input: Input
+    @ViewBuilder var output: Output
+    @State private var ratio = 0.5
+    @State private var dragStartHeight: CGFloat?
+
+    static func inputHeight(available: CGFloat, ratio: Double) -> CGFloat {
+        min(max(available * ratio, 130), max(130, available - 80))
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            let available = max(0, geometry.size.height - 16)
+            let height = Self.inputHeight(available: available, ratio: ratio)
+            VStack(spacing: 0) {
+                input.frame(height: height)
+                ZStack {
+                    Color.clear
+                    Capsule().fill(.secondary.opacity(0.5)).frame(width: 44, height: 4)
+                }
+                .frame(height: 16)
+                .contentShape(Rectangle())
+                .help("上下拖曳以調整原文與翻譯結果的比例")
+                .accessibilityLabel("調整上下區塊比例")
+                .accessibilityAdjustableAction { direction in
+                    let change = direction == .increment ? 0.05 : -0.05
+                    ratio = Self.inputHeight(available: available, ratio: ratio + change) / max(available, 1)
+                }
+                .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("translationPanes"))
+                    .onChanged { value in
+                        if dragStartHeight == nil { dragStartHeight = height }
+                        ratio = Self.inputHeight(available: available,
+                            ratio: ((dragStartHeight ?? height) + value.translation.height) / max(available, 1)) / max(available, 1)
+                    }
+                    .onEnded { _ in dragStartHeight = nil })
+                output.frame(height: max(0, available - height))
+            }
+            .coordinateSpace(name: "translationPanes")
+        }
     }
 }
 
@@ -353,7 +394,7 @@ struct SettingsView: View {
         Form {
             Section("Gemini") {
                 SecureField("API Key", text: $settings.apiKey)
-                HStack { Button("儲存 API Key") { do { try settings.saveAPIKey(); saveMessage = "已儲存到 Keychain" } catch { saveMessage = error.localizedDescription } }; Text(saveMessage).foregroundStyle(.secondary) }
+                HStack { Button("儲存 API Key") { do { try settings.saveAPIKey(); saveMessage = "已儲存到本機設定檔" } catch { saveMessage = error.localizedDescription } }; Text(saveMessage).foregroundStyle(.secondary) }
                 TextField("模型", text: $settings.model)
                 HStack {
                     Button("讀取模型", action: settings.loadModels)
@@ -411,34 +452,29 @@ struct SettingsView: View {
     }
 }
 
-enum KeychainStore {
-    private static let service = "com.flosean.NextAITranslator"
-    private static let account = "gemini-api-key"
+enum APIKeyStore {
+    static let fileURL = URL.applicationSupportDirectory
+        .appendingPathComponent("NextAITranslator", isDirectory: true)
+        .appendingPathComponent("credentials.json")
 
-    static func load() -> String {
-        let query: [CFString: Any] = [kSecClass: kSecClassGenericPassword, kSecAttrService: service, kSecAttrAccount: account, kSecReturnData: true]
-        var result: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess, let data = result as? Data else { return "" }
-        return String(data: data, encoding: .utf8) ?? ""
+    static func load(from url: URL) -> String {
+        guard let data = try? Data(contentsOf: url),
+              let values = try? JSONDecoder().decode([String: String].self, from: data) else { return "" }
+        return values["apiKey"] ?? ""
     }
 
-    static func save(_ value: String) throws {
-        let query: [CFString: Any] = [kSecClass: kSecClassGenericPassword, kSecAttrService: service, kSecAttrAccount: account]
-        let status: OSStatus
+    static func save(_ value: String, to url: URL) throws {
+        let manager = FileManager.default
         if value.isEmpty {
-            status = SecItemDelete(query as CFDictionary)
-            guard status == errSecSuccess || status == errSecItemNotFound else {
-                throw GeminiError.message("無法刪除 API Key（\(status)）。")
-            }
-        } else {
-            let attributes: [CFString: Any] = [kSecValueData: Data(value.utf8)]
-            let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
-            if updateStatus == errSecItemNotFound {
-                status = SecItemAdd(query.merging(attributes) { _, new in new } as CFDictionary, nil)
-            } else {
-                status = updateStatus
-            }
-            guard status == errSecSuccess else { throw GeminiError.message("無法儲存 API Key（\(status)）。") }
+            if manager.fileExists(atPath: url.path) { try manager.removeItem(at: url) }
+            return
         }
+        let directory = url.deletingLastPathComponent()
+        try manager.createDirectory(at: directory, withIntermediateDirectories: true,
+                                    attributes: [.posixPermissions: 0o700])
+        try manager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+        let data = try JSONEncoder().encode(["apiKey": value])
+        try data.write(to: url, options: .atomic)
+        try manager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 }

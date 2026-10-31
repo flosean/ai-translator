@@ -34,14 +34,15 @@ local `HttpListener` serving canned SSE/JSON (see git history), then removed.
 - Independent SwiftUI/AppKit app, Apple Silicon, macOS 14+, Swift 6; no third-party packages.
 - `swift test --package-path mac` runs XCTest regression checks; `mac/package-app.sh`
   builds and ad-hoc signs `dist-mac/NextAI 翻譯.app`. Existing bundles need no Xcode to run.
-- `NextAITranslatorMacApp.swift`: named translation window, menu bar, settings, Keychain,
-  isolated UserDefaults store, cancellable translation view model, native `VSplitView`,
+- `NextAITranslatorMacApp.swift`: named translation window, menu bar, settings, local JSON API-key storage,
+  isolated UserDefaults store, cancellable translation view model, draggable SwiftUI translation panes,
   and `SMAppService.mainApp` login-item control. Settings reflect actual system status.
 - `GeminiService.swift`: Gemini-only networking and SSE decoding; UI callbacks are awaited
   on the main actor. Generation checks prevent cancelled requests from updating new output.
 - `HotkeyManager.swift`: Carbon registration of Option+Command+letter, with visible errors.
-- Tests must inject an empty/test API key and a temporary UserDefaults suite. Never access
-  the user's Keychain or paid API just to run tests.
+- Tests must inject an empty/test API key and a temporary UserDefaults suite. Use temporary
+  credential paths and mocked URLSession responses; never access the user's credentials or
+  paid API just to run tests.
 - macOS preferences and credentials are independent of Windows config. Its bundle version
   is in `mac/Info.plist`; the MinVer rules below apply to Windows.
 - `dist-mac/` and Windows `.exe` files are ignored by Git. Pushing source does not ship binaries.
