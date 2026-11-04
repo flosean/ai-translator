@@ -172,8 +172,8 @@ final class NextAITranslatorMacTests: XCTestCase {
         translator.output = String(repeating: "This is a long translated result. ", count: 12)
         translator.error = "這是一段用來確認底部錯誤訊息不會擠壓複製按鈕的長錯誤訊息。"
 
-        XCTAssertNotNil(render(TranslatorView(settings: settings, translator: translator), width: 620, height: 660))
-        XCTAssertNotNil(render(SettingsView(settings: settings), width: 560, height: 620))
+        XCTAssertNotNil(render(TranslatorView(settings: settings, translator: translator), width: 560, height: 520))
+        XCTAssertNotNil(render(SettingsView(settings: settings), width: 560, height: 440))
     }
 
     func testTranslateWithoutAPIKeyShowsImmediateError() {
@@ -196,9 +196,9 @@ final class NextAITranslatorMacTests: XCTestCase {
         let available: CGFloat = 500
         XCTAssertEqual(Panes.inputHeight(available: available, ratio: 0.5), 250)
         XCTAssertEqual(Panes.inputHeight(available: available, ratio: 0.7), 350)
-        XCTAssertEqual(Panes.inputHeight(available: available, ratio: -1), 130)
-        XCTAssertEqual(Panes.inputHeight(available: available, ratio: 2), 420)
-        XCTAssertEqual(Panes.inputHeight(available: 300, ratio: 0.7), 210)
+        XCTAssertEqual(Panes.inputHeight(available: available, ratio: -1), 150)
+        XCTAssertEqual(Panes.inputHeight(available: available, ratio: 2), 380)
+        XCTAssertEqual(Panes.inputHeight(available: 300, ratio: 0.7), 180)
     }
 
     func testShutDownDefaultModelMigratesToCurrentModel() {

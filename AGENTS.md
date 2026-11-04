@@ -32,6 +32,7 @@ local `HttpListener` serving canned SSE/JSON (see git history), then removed.
 ## macOS (`mac/`)
 
 - Independent SwiftUI/AppKit app, Apple Silicon, macOS 14+, Swift 6; no third-party packages.
+  Build with Xcode 26+ for native Liquid Glass APIs; availability checks preserve macOS 14/15 support.
 - `swift test --package-path mac` runs XCTest regression checks; `mac/package-app.sh`
   builds and ad-hoc signs `dist-mac/NextAI 翻譯.app`. Existing bundles need no Xcode to run.
 - `NextAITranslatorMacApp.swift`: named translation window, menu bar, settings, local JSON API-key storage,

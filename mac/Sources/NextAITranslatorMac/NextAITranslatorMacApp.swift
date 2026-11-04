@@ -23,7 +23,8 @@ struct NextAITranslatorMacApp: App {
                     HotkeyManager.shared.register(key: settings.hotkeyKey)
                 }
         }
-        .defaultSize(width: 680, height: 740)
+        .defaultSize(width: 660, height: 680)
+        .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)
         .commands { CommandGroup(replacing: .newItem) {} }
 
@@ -215,60 +216,196 @@ final class TranslatorViewModel: ObservableObject {
 struct TranslatorView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var translator: TranslatorViewModel
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 8) {
+            HStack(spacing: 10) {
+                Label("自動偵測", systemImage: "globe")
+                    .foregroundStyle(.secondary)
+                Image(systemName: "arrow.right").foregroundStyle(.tertiary)
+                Picker("目標語言", selection: $settings.target) {
+                    Text("繁體中文").tag("zh-Hant")
+                    Text("English").tag("en")
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .controlSize(.regular)
+                .frame(width: 190)
+                Spacer(minLength: 8)
+                Menu {
+                    ForEach(Tone.allCases) { tone in
+                        Button { settings.tone = tone } label: {
+                            if settings.tone == tone {
+                                Label(tone.title, systemImage: "checkmark")
+                            } else {
+                                Text(tone.title)
+                            }
+                        }
+                    }
+                } label: {
+                    Label(settings.tone.title, systemImage: "slider.horizontal.3")
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .padding(.horizontal, 10).frame(height: 28)
+                .modifier(TranslationGlass())
+                .help("翻譯語調")
+                .accessibilityLabel("翻譯語調：\(settings.tone.title)")
+            }
+            .font(.system(size: 13, weight: .medium))
+
             ResizableTranslationPanes {
-                VStack(spacing: 12) {
+                VStack(spacing: 6) {
+                    HStack(spacing: 10) {
+                        Text("原文").fontWeight(.medium)
+                        Spacer()
+                        if !translator.source.isEmpty {
+                            Text("\(translator.source.count) 字").monospacedDigit()
+                        }
+                        Button("清除內容", systemImage: "xmark", action: translator.clear)
+                            .labelStyle(.iconOnly).buttonStyle(.plain)
+                            .frame(width: 24, height: 24)
+                            .contentShape(Circle())
+                            .help("清除內容")
+                    }
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
                     InputTextView(
                         text: $translator.source,
                         fontSize: settings.contentFontSize,
-                        placeholder: "輸入或貼上想翻譯的內容"
+                        placeholder: "輸入或貼上想翻譯的內容…"
                     )
-                    .padding(6)
                     .frame(minHeight: 80, maxHeight: .infinity)
-                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
                     .accessibilityLabel("原文")
-
+                }
+                .padding(10)
+                .background(paneColor, in: RoundedRectangle(cornerRadius: 14))
+                .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.primary.opacity(0.05)))
+            } output: {
+                VStack(spacing: 6) {
                     HStack {
-                        Button("繁體中文") { settings.target = "zh-Hant" }.buttonStyle(.bordered).tint(settings.target == "zh-Hant" ? .accentColor : .gray)
-                        Button("English") { settings.target = "en" }.buttonStyle(.bordered).tint(settings.target == "en" ? .accentColor : .gray)
-                        Picker("語調", selection: $settings.tone) { ForEach(Tone.allCases) { Text($0.title).tag($0) } }.frame(width: 130)
+                        Text("譯文").fontWeight(.medium)
+                        Text(settings.target == "zh-Hant" ? "繁體中文" : "English")
+                            .foregroundStyle(.tertiary)
                         Spacer()
-                        Button("清除", action: translator.clear)
-                        Button(translator.isTranslating ? "翻譯中…" : "翻譯") { translator.translate() }
-                            .keyboardShortcut(.return, modifiers: .command).disabled(translator.source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || translator.isTranslating)
+                        Button("複製結果", systemImage: "doc.on.doc", action: translator.copy)
+                            .labelStyle(.iconOnly)
+                            .translationButtonStyle()
+                            .buttonBorderShape(.capsule)
+                            .disabled(translator.output.isEmpty)
+                            .help("複製結果")
+                    }
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    if translator.output.isEmpty {
+                        VStack(spacing: 10) {
+                            Image(systemName: "character.bubble").font(.system(size: 28, weight: .light))
+                                .foregroundStyle(.tertiary)
+                            Text(translator.isTranslating ? "正在等待譯文…" : "翻譯結果會顯示在這裡")
+                                .font(.system(size: 13)).foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        ScrollView {
+                            Text(translator.output)
+                                .font(.system(size: settings.contentFontSize))
+                                .frame(maxWidth: .infinity, alignment: .topLeading)
+                                .textSelection(.enabled)
+                        }
+                        .accessibilityLabel("翻譯結果")
                     }
                 }
-            } output: {
-                ScrollView {
-                    Text(translator.output.isEmpty ? "翻譯結果會顯示在這裡" : translator.output)
-                        .font(.system(size: settings.contentFontSize))
-                        .foregroundStyle(translator.output.isEmpty ? .secondary : .primary)
-                        .frame(maxWidth: .infinity, alignment: .topLeading).textSelection(.enabled).padding(12)
-                }
-                .frame(minHeight: 80, maxHeight: .infinity)
-                .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
-                .accessibilityLabel("翻譯結果")
+                .padding(10)
+                .background(paneColor, in: RoundedRectangle(cornerRadius: 14))
+                .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.primary.opacity(0.05)))
             }
-            HStack {
-                SettingsLink { Image(systemName: "gearshape") }
+
+            if !translator.error.isEmpty {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                    Text(translator.error).lineLimit(3).textSelection(.enabled)
+                        .help(translator.error)
+                }
+                .font(.system(size: 12))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .background(.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                .accessibilityLabel("翻譯錯誤：\(translator.error)")
+            }
+
+            HStack(spacing: 10) {
+                SettingsLink { Image(systemName: "gearshape").frame(width: 20, height: 20) }
+                    .translationButtonStyle()
+                    .buttonBorderShape(.circle)
                     .help("設定")
                     .accessibilityLabel("設定")
                 if translator.isTranslating {
                     ProgressView().controlSize(.small)
-                    Text("正在翻譯…").foregroundStyle(.secondary)
+                    Text("正在翻譯…").font(.system(size: 12)).foregroundStyle(.secondary)
+                } else {
+                    Text(settings.model).font(.system(size: 11)).foregroundStyle(.tertiary)
+                        .lineLimit(1).truncationMode(.middle)
                 }
-                if !translator.error.isEmpty {
-                    Text(translator.error).foregroundStyle(.red).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
+                Spacer(minLength: 8)
+                Text("⌘ ↩").font(.system(size: 12)).foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+                Button(action: translator.translate) {
+                    Label("翻譯", systemImage: "arrow.up")
+                        .font(.system(size: 13, weight: .semibold))
+                        .padding(.horizontal, 10).padding(.vertical, 3)
                 }
-                Spacer(minLength: 0)
-                Button("複製結果", action: translator.copy).disabled(translator.output.isEmpty)
+                .translationButtonStyle(prominent: true)
+                .buttonBorderShape(.capsule)
+                .controlSize(.regular)
+                .keyboardShortcut(.return, modifiers: .command)
+                .disabled(translator.source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || translator.isTranslating)
             }
         }
-        .padding(20)
-        .frame(minWidth: 620, minHeight: 660)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(minWidth: 560, minHeight: 520)
+        .modifier(TranslationWindowBackground())
         .onExitCommand { NSApp.keyWindow?.orderOut(nil) }
+    }
+
+    private var paneColor: Color {
+        Color(nsColor: .textBackgroundColor).opacity(colorScheme == .dark ? 0.45 : 0.72)
+    }
+}
+
+private struct TranslationWindowBackground: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if reduceTransparency {
+            content.background(Color(nsColor: .windowBackgroundColor))
+        } else if #available(macOS 15, *) {
+            content.containerBackground(.thinMaterial, for: .window)
+        } else {
+            content.background(.regularMaterial)
+        }
+    }
+}
+
+private struct TranslationGlass: ViewModifier {
+    @ViewBuilder func body(content: Content) -> some View {
+        if #available(macOS 26, *) {
+            content.glassEffect(.regular.interactive(), in: Capsule())
+        } else {
+            content.background(.regularMaterial, in: Capsule())
+        }
+    }
+}
+
+private extension View {
+    @ViewBuilder func translationButtonStyle(prominent: Bool = false) -> some View {
+        if #available(macOS 26, *) {
+            if prominent { buttonStyle(.glassProminent).tint(.accentColor) }
+            else { buttonStyle(.glass) }
+        } else {
+            if prominent { buttonStyle(.borderedProminent) }
+            else { buttonStyle(.bordered) }
+        }
     }
 }
 
@@ -279,7 +416,7 @@ struct ResizableTranslationPanes<Input: View, Output: View>: View {
     @State private var dragStartHeight: CGFloat?
 
     static func inputHeight(available: CGFloat, ratio: Double) -> CGFloat {
-        min(max(available * ratio, 130), max(130, available - 80))
+        min(max(available * ratio, 150), max(150, available - 120))
     }
 
     var body: some View {
@@ -290,7 +427,7 @@ struct ResizableTranslationPanes<Input: View, Output: View>: View {
                 input.frame(height: height)
                 ZStack {
                     Color.clear
-                    Capsule().fill(.secondary.opacity(0.5)).frame(width: 44, height: 4)
+                    Capsule().fill(.tertiary).frame(width: 36, height: 4)
                 }
                 .frame(height: 16)
                 .contentShape(Rectangle())
@@ -324,6 +461,7 @@ struct InputTextView: NSViewRepresentable {
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSScrollView()
         scrollView.borderType = .noBorder
+        scrollView.drawsBackground = false
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
 
@@ -331,12 +469,15 @@ struct InputTextView: NSViewRepresentable {
         textView.delegate = context.coordinator
         textView.placeholder = placeholder
         textView.font = .systemFont(ofSize: fontSize)
+        textView.drawsBackground = false
+        textView.textColor = .labelColor
+        textView.insertionPointColor = .labelColor
         textView.isRichText = false
         textView.allowsUndo = true
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
-        textView.textContainerInset = NSSize(width: 8, height: 8)
+        textView.textContainerInset = NSSize(width: 0, height: 2)
         textView.textContainer?.lineFragmentPadding = 0
         textView.textContainer?.widthTracksTextView = true
         textView.string = text
@@ -384,6 +525,7 @@ final class PlaceholderTextView: NSTextView {
 }
 
 struct SettingsView: View {
+    @Environment(\.dismiss) private var dismiss
     @ObservedObject var settings: AppSettings
     @ObservedObject private var hotkey = HotkeyManager.shared
     @State private var saveMessage = ""
@@ -391,46 +533,104 @@ struct SettingsView: View {
     @State private var loginItemError = ""
 
     var body: some View {
-        Form {
-            Section("Gemini") {
-                SecureField("API Key", text: $settings.apiKey)
-                HStack { Button("儲存 API Key") { do { try settings.saveAPIKey(); saveMessage = "已儲存到本機設定檔" } catch { saveMessage = error.localizedDescription } }; Text(saveMessage).foregroundStyle(.secondary) }
-                TextField("模型", text: $settings.model)
-                HStack {
-                    Button("讀取模型", action: settings.loadModels)
+        ScrollView {
+            Form {
+                Section("Gemini") {
+                    LabeledContent("API Key") {
+                        HStack(spacing: 8) {
+                            SecureField("API Key", text: $settings.apiKey).labelsHidden()
+                            Button("儲存") {
+                                do { try settings.saveAPIKey(); saveMessage = "已儲存到本機設定檔" }
+                                catch { saveMessage = error.localizedDescription }
+                            }
+                            .translationButtonStyle(prominent: true)
+                            .accessibilityLabel("儲存 API Key")
+                        }
+                    }
+                    .accessibilityElement(children: .contain)
+                    if !saveMessage.isEmpty { Text(saveMessage).font(.caption).foregroundStyle(.secondary) }
+                    LabeledContent("模型") {
+                        HStack(spacing: 8) {
+                            TextField("模型", text: $settings.model).labelsHidden()
+                            Button("讀取模型", action: settings.loadModels).translationButtonStyle()
+                        }
+                    }
+                    .accessibilityElement(children: .contain)
                     if !settings.models.isEmpty {
                         Picker("可用模型", selection: $settings.model) {
                             ForEach(settings.models, id: \.self) { Text($0).tag($0) }
                         }
-                        .labelsHidden()
-                        .frame(maxWidth: .infinity)
+                    }
+                    if !settings.modelError.isEmpty { Text(settings.modelError).foregroundStyle(.red) }
+                }
+                Section("操作") {
+                    Toggle("登入時自動啟動", isOn: Binding(
+                        get: { loginItemStatus == .enabled || loginItemStatus == .requiresApproval },
+                        set: setLaunchAtLogin
+                    ))
+                    if loginItemStatus == .requiresApproval {
+                        Text("請在系統設定的登入項目中允許 NextAI 翻譯。")
+                            .font(.caption).foregroundStyle(.secondary)
+                        Button("開啟登入項目設定") { SMAppService.openSystemSettingsLoginItems() }
+                    }
+                    if !loginItemError.isEmpty { Text(loginItemError).foregroundStyle(.red) }
+                    LabeledContent("全域快捷鍵") {
+                        HStack(spacing: 6) {
+                            Text("⌥⌘")
+                            TextField("快捷鍵字母", text: Binding(get: { settings.hotkeyKey }, set: {
+                                settings.hotkeyKey = String($0.lowercased().filter { $0.isASCII && $0.isLetter }.prefix(1))
+                            }))
+                            .labelsHidden().frame(width: 40)
+                            Text("單一英文字母").font(.caption).foregroundStyle(.secondary)
+                            Spacer(minLength: 0)
+                        }
+                    }
+                    if !hotkey.error.isEmpty { Text(hotkey.error).foregroundStyle(.red) }
+                    Toggle("叫出時自動翻譯剪貼簿", isOn: $settings.autoTranslateClipboard)
+                    LabeledContent("內容字級") {
+                        HStack(spacing: 8) {
+                            Slider(value: $settings.contentFontSize, in: 12...40, step: 1)
+                                .accessibilityLabel("內容字級")
+                            Text("\(Int(settings.contentFontSize))").monospacedDigit().frame(width: 24)
+                        }
                     }
                 }
-                if !settings.modelError.isEmpty { Text(settings.modelError).foregroundStyle(.red) }
-            }
-            Section("操作") {
-                Toggle("登入時自動啟動", isOn: Binding(
-                    get: { loginItemStatus == .enabled || loginItemStatus == .requiresApproval },
-                    set: setLaunchAtLogin
-                ))
-                if loginItemStatus == .requiresApproval {
-                    Text("尚未啟用自動啟動，請在系統設定的登入項目中允許 NextAI 翻譯。")
-                        .foregroundStyle(.secondary)
-                    Button("開啟登入項目設定") { SMAppService.openSystemSettingsLoginItems() }
+                Section("提示詞") {
+                    HStack {
+                        Text("使用 {target} 代表目標語言。")
+                            .font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                        Button("還原預設") { settings.promptTemplate = AppSettings.defaultPrompt }
+                    }
+                    TextEditor(text: $settings.promptTemplate)
+                        .font(.system(size: 12))
+                        .scrollContentBackground(.hidden)
+                        .padding(4).frame(height: 120)
+                        .background(.quaternary.opacity(0.2), in: RoundedRectangle(cornerRadius: 8))
+                        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.secondary.opacity(0.2)))
+                        .accessibilityLabel("提示詞範本")
                 }
-                if !loginItemError.isEmpty { Text(loginItemError).foregroundStyle(.red) }
-                TextField("全域快捷鍵（⌥⌘ + 單一字母）", text: Binding(get: { settings.hotkeyKey }, set: { settings.hotkeyKey = String($0.lowercased().filter { $0.isASCII && $0.isLetter }.prefix(1)) }))
-                if !hotkey.error.isEmpty { Text(hotkey.error).foregroundStyle(.red) }
-                Toggle("叫出時自動翻譯剪貼簿", isOn: $settings.autoTranslateClipboard)
-                HStack { Text("內容字級"); Slider(value: $settings.contentFontSize, in: 12...40, step: 1); Text("\(Int(settings.contentFontSize))") }
             }
-            Section("提示詞") {
-                Text("使用 {target} 代表目標語言。")
-                TextEditor(text: $settings.promptTemplate).frame(minHeight: 140)
-                Button("還原預設") { settings.promptTemplate = AppSettings.defaultPrompt }
-            }
+            .formStyle(.columns)
+            .textFieldStyle(.roundedBorder)
+            .toggleStyle(.checkbox)
+            .controlSize(.small)
+            .padding(14)
         }
-        .formStyle(.grouped).padding().frame(minWidth: 560, idealWidth: 620, minHeight: 620)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            HStack {
+                Spacer()
+                Button("完成") { dismiss() }
+                    .translationButtonStyle(prominent: true)
+                    .keyboardShortcut(.cancelAction)
+                    .help("關閉設定（Esc）")
+            }
+            .padding(.horizontal, 14).padding(.vertical, 8)
+            .background(.regularMaterial)
+            .overlay(alignment: .top) { Divider() }
+        }
+        .frame(width: 560, height: 440)
+        .modifier(TranslationWindowBackground())
         .onAppear { loginItemStatus = SMAppService.mainApp.status }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             loginItemStatus = SMAppService.mainApp.status

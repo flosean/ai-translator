@@ -50,7 +50,7 @@ dotnet publish app/NextAITranslator.csproj -c Release -r win-x64 --self-containe
 
 `mac/` 是原生 SwiftUI 版本，限定 macOS 14 以上與 Apple Silicon。它保留完整輸入／輸出翻譯介面、Gemini SSE 串流、選單列常駐、`⌥⌘Z` 全域快捷鍵，以及剪貼簿自動翻譯；API Key 以明文存在本機設定檔 `~/Library/Application Support/NextAITranslator/credentials.json`（目錄權限 700、檔案權限 600）。
 
-需要 Xcode 16 以上。最方便是用 Xcode 開啟 `mac/Package.swift` 後按 Run；也可在終端機執行：
+需要 Xcode 26 以上（編譯原生 Liquid Glass API）；App 仍可在 macOS 14 以上執行。最方便是用 Xcode 開啟 `mac/Package.swift` 後按 Run；也可在終端機執行：
 
 ```zsh
 cd mac
@@ -71,7 +71,7 @@ mac/package-app.sh
 
 輸入與翻譯結果的高度可透過中間控制列下方的灰色把手調整：按住把手上下拖曳即可，兩區各保留最小可閱讀高度。
 
-內容區直接從輸入框開始，不重複顯示 App 標題；設定齒輪位於視窗左下角。
+App 圖示採用藍綠色玻璃對話框與 A／文翻譯符號。介面採用系統材質與圓角文字區，使用緊湊邊距與較大的文字可用空間，頂部集中目標語言與單層語調選單；複製按鈕位於譯文右上角，設定與翻譯按鈕位於底部。macOS 26 以上使用原生 Liquid Glass 按鈕與選單，macOS 14／15 使用相容的系統材質與按鈕；明暗模式隨系統切換，並配合「降低透明度」設定。 設定視窗改為緊湊的 560 × 440 欄位排列，金鑰儲存與模型讀取按鈕放在各自欄位旁，底部固定顯示「完成」按鈕，按下或按 Esc 即可關閉，不必捲動尋找。
 
 安裝後，開啟 App「設定」→「操作」，勾選「登入時自動啟動」，之後登入 Mac 就會啟動翻譯器；取消勾選即可關閉。若顯示需要允許，按「開啟登入項目設定」到 macOS 系統設定中允許。此選項以系統的登入項目狀態為準，從系統設定修改後，回到 App 也會更新。請從已打包的 `.app` 設定此功能；使用現有成品不需要 Xcode。
 
